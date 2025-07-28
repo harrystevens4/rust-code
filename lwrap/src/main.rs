@@ -3,7 +3,7 @@ use std::process::{Command,Stdio,ExitStatus,ExitCode};
 use std::thread;
 use std::sync::{Arc,Mutex};
 use std::env::args;
-use std::io::{Read,Write,Result,Error};
+use std::io::{Read,Write,Result,Error,ErrorKind};
 use std::time::Duration;
 
 //======================== structs ======================
@@ -62,7 +62,7 @@ fn main() -> Result<ExitCode>{
 			//will halt when dropped
 			let _halt_guard = halt.guard();
 			loop {
-				let input = io.input(">>>")?;
+				let input = io.input(">>>")? + "\n";
 				stdin.write_all(input.as_bytes())?;
 				if halt.halted() {
 					return Ok::<(),Error>(())
@@ -89,7 +89,13 @@ fn main() -> Result<ExitCode>{
 		})
 	};
 	//====== wait for child process to exit ======
-	let exit_status = process.wait_with_output()?.status;
+	let exit_status = loop {
+		match process.try_wait()?{
+			Some(result) => break result,
+			None => thread::sleep(Duration::from_millis(50)),
+		};
+	};
+	process.wait_with_output();
 	synced_halt.halt();
 	threaded_io.interupt_input();
 	let _ = input_thread_handle.join();
@@ -104,7 +110,7 @@ fn read_line<T: Read>(stream: &mut T) -> Result<String> {
 		//get byte
 		let mut byte = [0; 1];
 		//break if eof
-		if stream.read(&mut byte)? == 0 {break};
+		if stream.read(&mut byte)? == 0 {return Err(ErrorKind::Interrupted.into())};
 		let ch = char::from(byte[0]);
 		//break when end of transmition or newline sent
 		if ch == '\n' || ch == '\x04' {break}
