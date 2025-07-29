@@ -1,5 +1,5 @@
 use tio::ThreadedIO;
-use std::process::{Command,Stdio,ExitStatus,ExitCode};
+use std::process::{Command,Stdio,ExitCode};
 use std::thread;
 use std::sync::{Arc,Mutex};
 use std::env::args;
@@ -31,6 +31,7 @@ impl SyncedHalt {
 		}
 	}
 }
+//i loooooove RAII
 struct SyncedHaltGuard<'a>{
 	halt: &'a Mutex<bool>
 }
@@ -95,7 +96,7 @@ fn main() -> Result<ExitCode>{
 			None => thread::sleep(Duration::from_millis(50)),
 		};
 	};
-	process.wait_with_output();
+	let _ = process.wait_with_output();
 	synced_halt.halt();
 	threaded_io.interupt_input();
 	let _ = input_thread_handle.join();
