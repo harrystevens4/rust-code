@@ -44,7 +44,12 @@ impl Drop for SyncedHalt {
 //====================== functions =======================
 fn main() -> Result<ExitCode>{
 	let synced_halt = Arc::new(SyncedHalt::new());
-	let threaded_io = Arc::new(ThreadedIO::new());
+	let threaded_io = Arc::new(
+		ThreadedIO::builder()
+			.handle_signals(true)
+			.handle_history(true)
+			.build()
+	);
 	//====== spawn process ======
 	let mut args_iter = args();
 	//skip our argv[0]
