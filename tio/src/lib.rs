@@ -205,7 +205,6 @@ impl ThreadedIO {
 		if history.index == history.buffer.len()-1 { //already the latest
 		}else{
 			history.index += 1;
-			history.buffer[history.index].clone();
 		}
 		
 	}
@@ -214,7 +213,6 @@ impl ThreadedIO {
 		if history.index == 0 { //already the latest
 		}else{
 			history.index -= 1;
-			history.buffer[history.index].clone();
 		}
 	}
 	fn history_set_current(&self, new: Vec<char>){
@@ -225,7 +223,11 @@ impl ThreadedIO {
 	//also sets index to this new entry
 	fn history_new_entry_empty(&self){
 		let mut history = self.history.lock().unwrap();
-		history.buffer.push(vec![]);
+		//dont add one if there is already an empty one
+		if history.buffer.is_empty() || !history.buffer[history.buffer.len()-1].is_empty(){
+			history.buffer.push(vec![]);
+		}
+		//set position to the empty one wether it was created now or before
 		history.index = history.buffer.len()-1;
 	}
 	fn history_current_push(&self, ch: char){
