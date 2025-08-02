@@ -1,9 +1,9 @@
 mod parser {
-	struct UntilIter<I,T: Iterator<Item = I>, F: FnMut(&I) -> bool> {
+	struct UntilIter<'a,I,T: Iterator<Item = I>, F: FnMut(&I) -> bool> {
 		test: F,
-		iter: T,
+		iter: &'a mut T,
 	}
-	impl<I,T: Iterator<Item = I>, F: FnMut(&I) -> bool> Iterator for UntilIter<I,T,F> {
+	impl<'a,I,T: Iterator<Item = I>, F: FnMut(&I) -> bool> Iterator for UntilIter<'a,I,T,F> {
 		type Item = I;
 		fn next(&mut self) -> Option<I> {
 			let item = self.iter.next()?;
@@ -11,7 +11,7 @@ mod parser {
 			Some(item)
 		}
 	}
-	fn until_matches<I,T: Clone + Iterator<Item = I>, F: FnMut(&I) -> bool>(iter: T,mut test: F) -> Option<UntilIter<I,T,F>>{
+	fn until_matches<I,T: Clone + Iterator<Item = I>, F: FnMut(&I) -> bool>(iter: &mut T,mut test: F) -> Option<UntilIter<I,T,F>>{
 		let _ = iter.clone().find(&mut test)?;
 		Some(UntilIter {test,iter})
 	}
@@ -19,7 +19,7 @@ mod parser {
 	use std::collections::HashMap;
 	//====== structures ======
 	//provided as the interface to the user
-	#[derive(Debug,PartialEq)]
+	#[derive(Debug,PartialEq,Clone)]
 	pub enum XMLParseError {
 		TagNeverClosed(usize), //position
 		EmptyTag(usize),
@@ -28,11 +28,11 @@ mod parser {
 		UnexpectedEndTag(String),
 		UnexpectedContent(String),
 	}
-	#[derive(Debug,PartialEq)]
+	#[derive(Debug,PartialEq,Clone)]
 	pub struct XMLTree {
 		elements: Vec<XMLElement>,
 	}
-	#[derive(Debug,PartialEq)]
+	#[derive(Debug,PartialEq,Clone)]
 	pub struct XMLElement {
 		name: String,
 		attributes: HashMap<String,String>,
@@ -40,19 +40,19 @@ mod parser {
 		elements: Vec<XMLElement>,
 	}
 	//used by the lexer
-	#[derive(Debug,PartialEq)]
+	#[derive(Debug,PartialEq,Clone)]
 	pub enum XMLTagType {
 		Start,
 		End,
 		Empty,
 	}
-	#[derive(Debug,PartialEq)]
+	#[derive(Debug,PartialEq,Clone)]
 	pub struct XMLTag {
 		pub tag_type: XMLTagType,
 		pub name: String,
 		pub attributes: HashMap<String,String>,
 	}
-	#[derive(Debug,PartialEq)]
+	#[derive(Debug,PartialEq,Clone)]
 	pub enum XMLItem {
 		Tag(XMLTag), 
 		Content(String),
@@ -184,10 +184,18 @@ mod parser {
 				array.push(match token_type {
 					XMLItem::Tag(current_token) => match &current_token.tag_type {
 						Start => { //recursion
-							let contains = until_matches(lexemes_iter,|x|{if let XMLItem::Tag(tag) = x && tag.name == current_token.name {true} else {false}})
+							//grab untill end tag
+							let contains = until_matches(&mut lexemes_iter,|x|{if let XMLItem::Tag(tag) = x && tag.name == current_token.name {true} else {false}})
 								.ok_or(XMLParseError::NoEndTag(current_token.name.clone()))?
+								.map(|t| t.clone())
 								.collect::<Vec<_>>();
-							todo!();
+							//TODO: grab a content if there is one at the top layer
+							XMLElement { 
+								name: current_token.name.clone(),
+								elements: build_from_tokens(contains)?,
+								attributes: current_token.attributes.clone(),
+								content: None,
+							}
 						},
 						End => return Err(XMLParseError::UnexpectedEndTag(current_token.name.clone())),
 						Empty => XMLElement { name: current_token.name.clone(), attributes: current_token.attributes.clone(), content: None, elements: vec![] },
@@ -203,8 +211,17 @@ mod parser {
 		type Error = XMLParseError; 
 		fn try_from(data: String) -> Result<Self,XMLParseError> {
 			Ok(XMLTree {
-				elements: vec![],
+				elements: build_from_tokens(lexer(data)?)?,
 			})
+		}
+	}
+	impl TryFrom<XMLItem> for String {
+		type Error = ();
+		fn try_from(item: XMLItem) -> Result<Self,Self::Error> {
+			match item {
+				XMLItem::Tag(_) => Err(()),
+				XMLItem::Content(c) => Ok(c),
+			}
 		}
 	}
 }
@@ -217,6 +234,7 @@ mod tests {
 	use super::parser::XMLItem::{Tag,Content};
 	use super::parser::XMLTag;
 	use super::parser::XMLParseError::*;
+	use super::parser::XMLTree;
 
 	#[test]
 	fn lexer_ok(){
@@ -266,6 +284,14 @@ mod tests {
 
 	}
 	#[test]
-	fn lexer_with_spaces(){
+	fn tree_builder(){
+		let tree = XMLTree::try_from("<a><c><f/></c><j/><b/></a>".to_string()).unwrap();
+		let expected_tree = XMLTree { elements: vec![
+			XMLElement { name: "a".into(), attributes: {}, content: None, elements: [
+				XML
+			}}
+		]}
+		println!("{:?}",tree);
+		panic!("aaaa");
 	}
 }
