@@ -1,4 +1,21 @@
 mod parser {
+	struct UntilIter<I,T: Iterator<Item = I>, F: FnMut(&I) -> bool> {
+		test: F,
+		iter: T,
+	}
+	impl<I,T: Iterator<Item = I>, F: FnMut(&I) -> bool> Iterator for UntilIter<I,T,F> {
+		type Item = I;
+		fn next(&mut self) -> Option<I> {
+			let item = self.iter.next()?;
+			if (self.test)(&item) == true {return None}
+			Some(item)
+		}
+	}
+	fn until_matches<I,T: Clone + Iterator<Item = I>, F: FnMut(&I) -> bool>(iter: T,mut test: F) -> Option<UntilIter<I,T,F>>{
+		let _ = iter.clone().find(&mut test)?;
+		Some(UntilIter {test,iter})
+	}
+	
 	use std::collections::HashMap;
 	//====== structures ======
 	//provided as the interface to the user
@@ -7,6 +24,9 @@ mod parser {
 		TagNeverClosed(usize), //position
 		EmptyTag(usize),
 		MalformedAttriubute(usize),
+		NoEndTag(String), //the index into all the tags
+		UnexpectedEndTag(String),
+		UnexpectedContent(String),
 	}
 	#[derive(Debug,PartialEq)]
 	pub struct XMLTree {
@@ -15,7 +35,7 @@ mod parser {
 	#[derive(Debug,PartialEq)]
 	pub struct XMLElement {
 		name: String,
-		attributes: Vec<HashMap<String,String>>,
+		attributes: HashMap<String,String>,
 		content: Option<String>,
 		elements: Vec<XMLElement>,
 	}
@@ -155,8 +175,28 @@ mod parser {
 		}
 		Ok(lexemes)
 	}
-	pub fn build_from_lexer(lexemes: Vec<XMLItem>) -> Result<Vec<XMLElement>,XMLParseError>{
-		todo!()
+	pub fn build_from_tokens(lexemes: Vec<XMLItem>) -> Result<Vec<XMLElement>,XMLParseError>{
+		use XMLTagType::*;
+		let mut array: Vec<XMLElement> = vec![];
+		let mut lexemes_iter = lexemes.iter();
+		loop {
+			if let Some(token_type) = lexemes_iter.next(){
+				array.push(match token_type {
+					XMLItem::Tag(current_token) => match &current_token.tag_type {
+						Start => { //recursion
+							let contains = until_matches(lexemes_iter,|x|{if let XMLItem::Tag(tag) = x && tag.name == current_token.name {true} else {false}})
+								.ok_or(XMLParseError::NoEndTag(current_token.name.clone()))?
+								.collect::<Vec<_>>();
+							todo!();
+						},
+						End => return Err(XMLParseError::UnexpectedEndTag(current_token.name.clone())),
+						Empty => XMLElement { name: current_token.name.clone(), attributes: current_token.attributes.clone(), content: None, elements: vec![] },
+					},
+					XMLItem::Content(c) => return Err(XMLParseError::UnexpectedContent(c.to_string())),
+				})
+			}else {break Ok(array)}
+		}
+		
 	}
 	//====== associated functions ======
 	impl TryFrom<String> for XMLTree {
