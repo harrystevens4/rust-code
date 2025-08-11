@@ -319,6 +319,12 @@ mod tests {
 			<items>
 				<food price=\"1\" name=\"apple\"/>
 				<drink price=\"2\" name=\"coffee\"/>
+				<drink price=\"99\" name=\"tea\"/>
+				<bag>
+					<abacus/>
+					<aardvark/>
+					<ambulance/>
+				</bag>
 			</items>
 		".to_string()).unwrap();
 		assert_eq!(tree,
@@ -327,6 +333,12 @@ XMLTree { elements: vec![
 	Elm::builder("items").elements([
 		Elm::builder("food").attributes([("price","1"),("name","apple")]),
 		Elm::builder("drink").attributes([("price","2"),("name","coffee")]),
+		Elm::builder("drink").attributes([("price","99"),("name","tea")]),
+		Elm::builder("bag").elements([
+			Elm::builder("abacus"),
+			Elm::builder("aardvark"),
+			Elm::builder("ambulance"),
+		]),
 	]),
 	
 ]}
