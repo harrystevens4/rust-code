@@ -30,7 +30,7 @@ mod parser {
 	}
 	#[derive(Debug,PartialEq,Clone)]
 	pub struct XMLTree {
-		elements: Vec<XMLElement>,
+		pub elements: Vec<XMLElement>,
 	}
 	#[derive(Debug,PartialEq,Clone)]
 	pub struct XMLElement {
@@ -168,7 +168,7 @@ mod parser {
 						}
 					}
 				}else {
-					(&mut content).push(ch);
+					if ![' ','\n','\t'].contains(&ch) {(&mut content).push(ch)}
 				}
 				position += 1;
 			}else {break}
@@ -185,16 +185,18 @@ mod parser {
 					XMLItem::Tag(current_token) => match &current_token.tag_type {
 						Start => { //recursion
 							//grab untill end tag
-							let contains = until_matches(&mut lexemes_iter,|x|{if let XMLItem::Tag(tag) = x && tag.name == current_token.name {true} else {false}})
+							let mut contains = until_matches(&mut lexemes_iter,|x|{if let XMLItem::Tag(tag) = x && tag.name == current_token.name {true} else {false}})
 								.ok_or(XMLParseError::NoEndTag(current_token.name.clone()))?
 								.map(|t| t.clone())
 								.collect::<Vec<_>>();
 							//TODO: grab a content if there is one at the top layer
 							XMLElement { 
 								name: current_token.name.clone(),
+								content: { 
+									if contains.len() > 0 && let XMLItem::Content(c) = contains.remove(0) {Some(c)} else {None}
+								},
 								elements: build_from_tokens(contains)?,
 								attributes: current_token.attributes.clone(),
-								content: None,
 							}
 						},
 						End => return Err(XMLParseError::UnexpectedEndTag(current_token.name.clone())),
@@ -224,6 +226,28 @@ mod parser {
 			}
 		}
 	}
+	impl XMLElement {
+		pub fn builder(name: &str) -> Self {
+			Self {
+				name: name.to_string(),
+				attributes: HashMap::new(),
+				content: None,
+				elements: vec![],
+			}
+		}
+		pub fn attributes<const N: usize>(mut self, attributes: [(&str,&str); N]) -> Self {
+			self.attributes = HashMap::from(attributes.map(|t| (t.0.to_string(),t.1.to_string())));
+			self
+		}
+		pub fn contents(mut self, contents: &str) -> Self {
+			self.content = Some(contents.to_string());
+			self
+		}
+		pub fn elements<const N: usize>(mut self, elements: [Self; N]) -> Self {
+			self.elements = elements.to_vec();
+			self
+		}
+	}
 }
 
 #[cfg(test)]
@@ -235,6 +259,7 @@ mod tests {
 	use super::parser::XMLTag;
 	use super::parser::XMLParseError::*;
 	use super::parser::XMLTree;
+	use super::parser::XMLElement;
 
 	#[test]
 	fn lexer_ok(){
@@ -285,13 +310,23 @@ mod tests {
 	}
 	#[test]
 	fn tree_builder(){
-		let tree = XMLTree::try_from("<a><c><f/></c><j/><b/></a>".to_string()).unwrap();
-		let expected_tree = XMLTree { elements: vec![
-			XMLElement { name: "a".into(), attributes: {}, content: None, elements: [
-				XML
-			}}
-		]}
-		println!("{:?}",tree);
-		panic!("aaaa");
+		type Elm = XMLElement;
+		let tree = XMLTree::try_from("
+			<items>
+				<food price=\"1\" name=\"apple\"/>
+				<drink price=\"2\" name=\"coffee\"/>
+			</items>
+		".to_string()).unwrap();
+		assert_eq!(tree,
+//---------------------------------------------------------
+XMLTree { elements: vec![
+	Elm::builder("items").elements([
+		Elm::builder("food").attributes([("price","1"),("name","apple")]),
+		Elm::builder("drink").attributes([("price","2"),("name","coffee")]),
+	]),
+	
+]}
+//---------------------------------------------------------
+		);
 	}
 }
