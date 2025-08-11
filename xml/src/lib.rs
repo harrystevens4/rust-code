@@ -189,11 +189,10 @@ mod parser {
 								.ok_or(XMLParseError::NoEndTag(current_token.name.clone()))?
 								.map(|t| t.clone())
 								.collect::<Vec<_>>();
-							//TODO: grab a content if there is one at the top layer
 							XMLElement { 
 								name: current_token.name.clone(),
 								content: { 
-									if contains.len() > 0 && let XMLItem::Content(c) = contains.remove(0) {Some(c)} else {None}
+									if contains.len() > 0 && let XMLItem::Content(c) = &contains[0] {Some(contains.remove(0).unwrap())} else {None}
 								},
 								elements: build_from_tokens(contains)?,
 								attributes: current_token.attributes.clone(),
@@ -246,6 +245,11 @@ mod parser {
 		pub fn elements<const N: usize>(mut self, elements: [Self; N]) -> Self {
 			self.elements = elements.to_vec();
 			self
+		}
+	}
+	impl XMLItem {
+		pub fn unwrap(self) -> String {
+			if let XMLItem::Content(c) = self {c} else {panic!("XMLItem not of content type")}
 		}
 	}
 }
