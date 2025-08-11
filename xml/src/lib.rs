@@ -24,12 +24,16 @@ mod parser {
 		TagNeverClosed(usize), //position
 		EmptyTag(usize),
 		MalformedAttriubute(usize),
+		MalformedTag(usize),
 		NoEndTag(String), //the index into all the tags
 		UnexpectedEndTag(String),
 		UnexpectedContent(String),
 	}
 	#[derive(Debug,PartialEq,Clone)]
 	pub struct XMLTree {
+		pub version: String,
+		pub standalone: bool,
+		pub encoding: String,
 		pub elements: Vec<XMLElement>,
 	}
 	#[derive(Debug,PartialEq,Clone)]
@@ -45,6 +49,7 @@ mod parser {
 		Start,
 		End,
 		Empty,
+		ProcessingInstruction,
 	}
 	#[derive(Debug,PartialEq,Clone)]
 	pub struct XMLTag {
@@ -59,12 +64,12 @@ mod parser {
 	}
 	//====== standalone functions ======
 	//                         purely for the errors
-	fn parse_attributes(attribute_list: Vec<String>, overall_position: usize) -> Result<HashMap<String,String>,XMLParseError>{
+	fn parse_attributes(attribute_list: Vec<String>, _overall_position: usize) -> Result<HashMap<String,String>,XMLParseError>{
 		let mut attributes = HashMap::new();
 		let mut current_position = 0;
 		for attr in attribute_list
 			.into_iter()
-			.map(|s| s.trim_matches('/').to_string())
+			.map(|s| s.trim_matches('/').trim_matches('?').to_string())
 		{
 				if !attr.is_empty(){
 					//only a=b not a or a=b=c
@@ -111,18 +116,42 @@ mod parser {
 			//check the last char is '/' to confirm if it is an empty tag
 			tag_type: match last_char {
 				'/' => XMLTagType::Empty,
+				'?' => match first_char {
+					'?' => XMLTagType::ProcessingInstruction,
+					_ => return Err(XMLParseError::MalformedTag(position)),
+				},
 				_ => match first_char {
 					'/' => XMLTagType::End,
 					_ => XMLTagType::Start,
 				}
 			},
-			name: items.iter().next().ok_or(XMLParseError::EmptyTag(position))?.trim_matches('/').to_string(),
+			name: items.iter().next().ok_or(XMLParseError::EmptyTag(position))?.trim_matches('/').trim_matches('?').to_string(),
 			attributes: parse_attributes(
 				items.into_iter().map(|s| s.to_string()).collect::<Vec<String>>()[1..].into(),position
 			)?,
 		})
 	}
 	pub fn lexer(data: String) -> Result<Vec<XMLItem>,XMLParseError>{
+		//------ utility closure ------
+		/*let get_until_matches = |end: &str|{
+			let tag = String::new();
+			let start_position = position + 1;
+			//consume the comment
+			let mut buffer = vec![];
+			//grab len to start off with
+			for _i in 0..end.len() {
+				buffer.push(data_iter.next().ok_or(XMLParseError::TagNeverClosed(start_position))?);
+				position += 1;
+			}
+			//keep looking one by one
+			loop{
+				if buffer.iter().collect::<String>() == end {break}
+				buffer.push(data_iter.next().ok_or(XMLParseError::TagNeverClosed(start_position))?);
+				tag.push(buffer.remove(0));
+				position += 1;
+			}
+		}*/
+		//-----------------------------
 		//split into vec of elements
 		let mut lexemes = vec![];
 		let mut data_iter = data.chars().peekable();
@@ -199,7 +228,7 @@ mod parser {
 							}
 						},
 						End => return Err(XMLParseError::UnexpectedEndTag(current_token.name.clone())),
-						Empty => XMLElement { name: current_token.name.clone(), attributes: current_token.attributes.clone(), content: None, elements: vec![] },
+						Empty | ProcessingInstruction => XMLElement { name: current_token.name.clone(), attributes: current_token.attributes.clone(), content: None, elements: vec![] },
 					},
 					XMLItem::Content(c) => return Err(XMLParseError::UnexpectedContent(c.to_string())),
 				})
@@ -211,9 +240,32 @@ mod parser {
 	impl TryFrom<String> for XMLTree {
 		type Error = XMLParseError; 
 		fn try_from(data: String) -> Result<Self,XMLParseError> {
+			let mut version = "1.0".to_string();
+			let mut encoding = "UTF-8".to_string();
+			let mut standalone = false;
+			let mut elements = build_from_tokens(lexer(data)?)?;
+			if elements.len() > 0 && elements[0].name.to_lowercase() == "xml" {
+				let declaration = elements.remove(0);
+				if let Some(e) = declaration.attributes.get("encoding") {encoding = e.clone()}
+				if let Some(v) = declaration.attributes.get("version") {version = v.clone()}
+				if let Some(s) = declaration.attributes.get("standalone") {standalone = s == "yes"}
+			}
 			Ok(XMLTree {
-				elements: build_from_tokens(lexer(data)?)?,
+				version,
+				encoding,
+				standalone,
+				elements,
 			})
+		}
+	}
+	impl XMLTree {
+		pub fn from_elements(elements: Vec<XMLElement>) -> Self {
+			XMLTree {
+				version: "1.0".to_string(),
+				encoding: "UTF-8".to_string(),
+				standalone: false,
+				elements,
+			}
 		}
 	}
 	impl TryFrom<XMLItem> for String {
@@ -223,6 +275,13 @@ mod parser {
 				XMLItem::Tag(_) => Err(()),
 				XMLItem::Content(c) => Ok(c),
 			}
+		}
+	}
+	use std::str::FromStr;
+	impl FromStr for XMLTree {
+		type Err = XMLParseError;
+		fn from_str(s: &str) -> Result<Self,Self::Err>{
+			return XMLTree::try_from(s.to_string());
 		}
 	}
 	impl XMLElement {
@@ -328,21 +387,38 @@ mod tests {
 			</items>
 		".to_string()).unwrap();
 		assert_eq!(tree,
-//---------------------------------------------------------
-XMLTree { elements: vec![
-	Elm::builder("items").elements([
-		Elm::builder("food").attributes([("price","1"),("name","apple")]),
-		Elm::builder("drink").attributes([("price","2"),("name","coffee")]),
-		Elm::builder("drink").attributes([("price","99"),("name","tea")]),
-		Elm::builder("bag").elements([
-			Elm::builder("abacus"),
-			Elm::builder("aardvark"),
-			Elm::builder("ambulance"),
-		]),
-	]),
-	
-]}
-//---------------------------------------------------------
+		XMLTree::from_elements(vec![
+			Elm::builder("items").elements([
+				Elm::builder("food").attributes([("price","1"),("name","apple")]),
+				Elm::builder("drink").attributes([("price","2"),("name","coffee")]),
+				Elm::builder("drink").attributes([("price","99"),("name","tea")]),
+				Elm::builder("bag").elements([
+					Elm::builder("abacus"),
+					Elm::builder("aardvark"),
+					Elm::builder("ambulance"),
+				]),
+			]),
+			
+		])
+		);
+	}
+	#[test]
+	fn xml_declaration(){
+		let tree = "
+			<?XmL version=\"9.9\" encoding=\"UTF-8\" random=\"bogus\" standalone=\"yes\"?>
+			<apple/>
+			<banana/>
+		".parse::<XMLTree>().unwrap();
+		assert_eq!(tree,
+		XMLTree {
+			version: "9.9".to_string(),
+			encoding: "UTF-8".to_string(),
+			standalone: true,
+			elements: vec![
+				XMLElement::builder("apple"),
+				XMLElement::builder("banana"),
+			]
+		}
 		);
 	}
 }
