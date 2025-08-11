@@ -267,6 +267,9 @@ mod parser {
 				elements,
 			}
 		}
+		/*pub fn find_elements<'s>(&'s self) -> &'s XMLElement {
+
+		}*/
 	}
 	impl TryFrom<XMLItem> for String {
 		type Error = ();
