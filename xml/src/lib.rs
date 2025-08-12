@@ -31,6 +31,11 @@ impl XMLTree {
 	}*/
 	pub fn as_string(&self, add_declaration: bool) -> String {
 		let mut tokens = vec![];
+		let standalone = {
+			if self.standalone {"yes"}
+			else {"no"}
+		}.to_string();
+		if add_declaration {tokens.push(format!("<?xml version=\"{}\" encoding=\"{}\" standalone=\"{}\"?>",self.version,self.encoding,standalone))}
 		for element in &self.elements {
 			tokens.append(&mut element_to_tokens(element));
 		}
@@ -490,5 +495,18 @@ mod tests {
 	}
 	#[test]
 	fn string_from_tree(){
+		let tree = XMLTree {
+			version: "1.0".to_string(),
+			encoding: "UTF-8".to_string(),
+			standalone: true,
+			elements: vec![
+				XMLElement::builder("computer").contents("mine"),
+				XMLElement::builder("watches").elements([
+					XMLElement::builder("omega"),
+					XMLElement::builder("rolex"),
+				]),
+			]
+		};
+		assert_eq!(Into::<String>::into(tree),"<?xml version=\"1.0\" encoding=\"UTF-8\" standalone=\"yes\"?><computer>mine</computer><watches><omega></omega><rolex></rolex></watches>")
 	}
 }
