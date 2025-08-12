@@ -262,7 +262,7 @@ mod parser {
 						}
 					}
 				}else {
-					if ![' ','\n','\t'].contains(&ch) {(&mut content).push(ch)}
+					if !['\n','\t'].contains(&ch) {(&mut content).push(ch)}
 				}
 				position += 1;
 			}else {break}
@@ -508,5 +508,30 @@ mod tests {
 			]
 		};
 		assert_eq!(Into::<String>::into(tree),"<?xml version=\"1.0\" encoding=\"UTF-8\" standalone=\"yes\"?><computer>mine</computer><watches><omega></omega><rolex></rolex></watches>")
+	}
+	#[test]
+	fn parse_with_declaration(){
+		let data = "
+			<?xml version=\"1.1\"?>
+			<pets>
+				<dog age=\"2\"/>
+				<cat age=\"4\"/>
+			</pets>
+			<rations>1 sachet per animal</rations>
+		";
+		let tree = XMLTree {
+			version: "1.1".to_string(),
+			encoding: "UTF-8".to_string(),
+			standalone: false,
+			elements: vec![
+				XMLElement::builder("pets").elements([
+					XMLElement::builder("dog").attributes([("age","2")]),
+					XMLElement::builder("cat").attributes([("age","4")]),
+				]),
+				XMLElement::builder("rations").contents("1 sachet per animal"),
+			]
+		};
+		assert_eq!(tree,data.parse().expect("parsing failed"));
+
 	}
 }
