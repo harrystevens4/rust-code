@@ -1,4 +1,79 @@
+use std::str::FromStr;
+use parser::XMLParseError;
+use std::collections::HashMap;
+use composer::*;
+//====== structs used in both modules =====
+#[derive(Debug,PartialEq,Clone)]
+pub struct XMLTree {
+	pub version: String,
+	pub standalone: bool,
+	pub encoding: String,
+	pub elements: Vec<XMLElement>,
+}
+#[derive(Debug,PartialEq,Clone)]
+pub struct XMLElement {
+	name: String,
+	attributes: HashMap<String,String>,
+	content: Option<String>,
+	elements: Vec<XMLElement>,
+}
+impl XMLTree {
+	pub fn from_elements(elements: Vec<XMLElement>) -> Self {
+		XMLTree {
+			version: "1.0".to_string(),
+			encoding: "UTF-8".to_string(),
+			standalone: false,
+			elements,
+		}
+	}
+	/*pub fn find_elements<'s>(&'s self) -> &'s XMLElement {
+
+	}*/
+	pub fn as_string(&self, add_declaration: bool) -> String {
+		let mut tokens = vec![];
+		for element in &self.elements {
+			tokens.append(&mut element_to_tokens(element));
+		}
+		tokens.into_iter().collect()
+	}
+}
+impl FromStr for XMLTree {
+	type Err = XMLParseError;
+	fn from_str(s: &str) -> Result<Self,Self::Err>{
+		return XMLTree::try_from(s.to_string());
+	}
+}
+impl From<XMLTree> for String {
+	fn from(tree: XMLTree) -> String {
+		tree.as_string(true)
+	}
+}
+impl XMLElement {
+	pub fn builder(name: &str) -> Self {
+		Self {
+			name: name.to_string(),
+			attributes: HashMap::new(),
+			content: None,
+			elements: vec![],
+		}
+	}
+	pub fn attributes<const N: usize>(mut self, attributes: [(&str,&str); N]) -> Self {
+		self.attributes = HashMap::from(attributes.map(|t| (t.0.to_string(),t.1.to_string())));
+		self
+	}
+	pub fn contents(mut self, contents: &str) -> Self {
+		self.content = Some(contents.to_string());
+		self
+	}
+	pub fn elements<const N: usize>(mut self, elements: [Self; N]) -> Self {
+		self.elements = elements.to_vec();
+		self
+	}
+}
+//====== parser ======
 mod parser {
+	use super::*;
+	use std::collections::HashMap;
 	struct UntilIter<'a,I,T: Iterator<Item = I>, F: FnMut(&I) -> bool> {
 		test: F,
 		iter: &'a mut T,
@@ -16,7 +91,6 @@ mod parser {
 		Some(UntilIter {test,iter})
 	}
 	
-	use std::collections::HashMap;
 	//====== structures ======
 	//provided as the interface to the user
 	#[derive(Debug,PartialEq,Clone)]
@@ -28,20 +102,6 @@ mod parser {
 		NoEndTag(String), //the index into all the tags
 		UnexpectedEndTag(String),
 		UnexpectedContent(String),
-	}
-	#[derive(Debug,PartialEq,Clone)]
-	pub struct XMLTree {
-		pub version: String,
-		pub standalone: bool,
-		pub encoding: String,
-		pub elements: Vec<XMLElement>,
-	}
-	#[derive(Debug,PartialEq,Clone)]
-	pub struct XMLElement {
-		name: String,
-		attributes: HashMap<String,String>,
-		content: Option<String>,
-		elements: Vec<XMLElement>,
 	}
 	//used by the lexer
 	#[derive(Debug,PartialEq,Clone)]
@@ -258,18 +318,10 @@ mod parser {
 			})
 		}
 	}
-	impl XMLTree {
-		pub fn from_elements(elements: Vec<XMLElement>) -> Self {
-			XMLTree {
-				version: "1.0".to_string(),
-				encoding: "UTF-8".to_string(),
-				standalone: false,
-				elements,
-			}
+	impl XMLItem {
+		pub fn unwrap(self) -> String {
+			if let XMLItem::Content(c) = self {c} else {panic!("XMLItem not of content type")}
 		}
-		/*pub fn find_elements<'s>(&'s self) -> &'s XMLElement {
-
-		}*/
 	}
 	impl TryFrom<XMLItem> for String {
 		type Error = ();
@@ -280,39 +332,34 @@ mod parser {
 			}
 		}
 	}
-	use std::str::FromStr;
-	impl FromStr for XMLTree {
-		type Err = XMLParseError;
-		fn from_str(s: &str) -> Result<Self,Self::Err>{
-			return XMLTree::try_from(s.to_string());
+}
+mod composer {
+	use super::*;
+	pub fn hashmap_to_attr_string(map: &HashMap<String,String>) -> String {
+		let mut result = String::new();
+		for key in map.keys(){
+			result.push_str(format!("{}=\"{}\" ",key,map[key]).as_str());
 		}
+		result
 	}
-	impl XMLElement {
-		pub fn builder(name: &str) -> Self {
-			Self {
-				name: name.to_string(),
-				attributes: HashMap::new(),
-				content: None,
-				elements: vec![],
-			}
+	pub fn element_to_tokens(element: &XMLElement) -> Vec<String>{
+		let mut result: Vec<String> = vec![];
+		//====== add the start tag ======
+		let attributes = hashmap_to_attr_string(&element.attributes);
+		let start_tag = format!("<{} {}",element.name,attributes).trim_end().to_string() + ">";
+		result.push(start_tag);
+		//====== add any content ======
+		if let Some(content) = &element.content {
+			result.push(content.to_string());
 		}
-		pub fn attributes<const N: usize>(mut self, attributes: [(&str,&str); N]) -> Self {
-			self.attributes = HashMap::from(attributes.map(|t| (t.0.to_string(),t.1.to_string())));
-			self
+		//====== add any contained elements ======
+		for sub_element in &element.elements {
+			result.append(&mut element_to_tokens(&sub_element));
 		}
-		pub fn contents(mut self, contents: &str) -> Self {
-			self.content = Some(contents.to_string());
-			self
-		}
-		pub fn elements<const N: usize>(mut self, elements: [Self; N]) -> Self {
-			self.elements = elements.to_vec();
-			self
-		}
-	}
-	impl XMLItem {
-		pub fn unwrap(self) -> String {
-			if let XMLItem::Content(c) = self {c} else {panic!("XMLItem not of content type")}
-		}
+		//====== add the end tag ======
+		let end_tag = format!("</{}>",&element.name);
+		result.push(end_tag);
+		result
 	}
 }
 
@@ -324,8 +371,8 @@ mod tests {
 	use super::parser::XMLItem::{Tag,Content};
 	use super::parser::XMLTag;
 	use super::parser::XMLParseError::*;
-	use super::parser::XMLTree;
-	use super::parser::XMLElement;
+	use super::XMLTree;
+	use super::XMLElement;
 
 	#[test]
 	fn lexer_ok(){
@@ -423,5 +470,25 @@ mod tests {
 			]
 		}
 		);
+	}
+	#[test]
+	fn tree_as_string(){
+		let tree = XMLTree {
+			version: "1.0".to_string(),
+			encoding: "UTF-8".to_string(),
+			standalone: true,
+			elements: vec![
+				XMLElement::builder("apple"),
+				XMLElement::builder("basket").elements([
+					XMLElement::builder("pear").attributes([("size","1")]),
+					XMLElement::builder("orange").contents("ripe"),
+				]),
+				XMLElement::builder("banana"),
+			]
+		};
+		assert_eq!(tree.as_string(false),"<apple></apple><basket><pear size=\"1\"></pear><orange>ripe</orange></basket><banana></banana>")
+	}
+	#[test]
+	fn string_from_tree(){
 	}
 }
