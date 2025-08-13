@@ -48,6 +48,7 @@ fn as_chunks<'a>(string: &'a String,chunk_size: usize) -> Vec<&'a str>{
 fn hash(input: String) -> [u8; 8] {
 	let mut chunks: Vec<[u8; 8]> = vec![];
 	let mut result = [0_u8; 8];
+	//split into [u8; 8] chunks
 	for (i,chunk) in as_chunks(&input,8).into_iter().enumerate(){
 		let mut buffer = chunk.to_string();
 		rotate(&mut buffer,i as isize);
@@ -56,10 +57,17 @@ fn hash(input: String) -> [u8; 8] {
 		processed_chunk[..str_chunk.len()].copy_from_slice(str_chunk);
 		chunks.push(processed_chunk);
 	}
+	//flatten all chunks by performing some random operations i made up and an xor
 	for chunk in chunks {
-		let new_result: Vec<u8> = chunk.iter().zip(result).map(|(x,y)| x ^ y).collect();
+		let new_result: Vec<u8> = chunk.iter().zip(result).map(|(x,y)| x ^ y ^ x.wrapping_pow(y.wrapping_add(2) as u32)).collect();
 		result.copy_from_slice(&new_result[..]);
 	}
-	//chunks.iter().for_each(|x| println!("{:?}",x));
+	//more magic operations with the final array
+	let mut magic_val = 42;
+	for i in 0..8 {
+		println!("{}",magic_val);
+		magic_val = result[i].wrapping_add(magic_val).wrapping_mul(magic_val.wrapping_add(13));
+		result[i] = magic_val;
+	}
 	result
 }
