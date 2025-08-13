@@ -65,7 +65,6 @@ fn hash(input: String) -> [u8; 8] {
 	//more magic operations with the final array
 	let mut magic_val = 42;
 	for i in 0..8 {
-		println!("{}",magic_val);
 		magic_val = result[i].wrapping_add(magic_val).wrapping_mul(magic_val.wrapping_add(13));
 		result[i] = magic_val;
 	}
