@@ -10,21 +10,28 @@ fn main() -> Result<(),regex::Error>{
 		print_help();
 		process::exit(1);
 	}
+	let replacement_name = &args[3];
+	let regex_expr = &args[2];
+	let file_path = &args[1];
 	//====== compile regex ======
-	let regex = regex::Regex::new(&args[2])?;
+	let regex = regex::Regex::new(regex_expr)?;
 	//====== check the file exists ======
-	let file = Path::new(&args[1]);
+	let file = Path::new(file_path);
 	if !file.exists() {
 		eprintln!("File does not exist");
 		process::exit(2);//ENOENT
 	}
 	//====== figure out new name ======
-	let name = file.to_str()
+	let name = file.file_name()
+		.unwrap()
+		.to_str()
 		.unwrap();
-	let new_name = regex.replace(name,&args[3]);
+	let new_name = regex.replace(name,replacement_name);
 	//====== rename ======
-	rename(file,new_name.into_owned()).unwrap_or_else(|err|{
-		eprintln!("Could not rename file: {err:?}");
+	let new_path = file.parent().unwrap_or(Path::new(".")).join(Path::new(&new_name.into_owned()));
+	println!("renaming {file:?} to {new_path:?}");
+	rename(file,new_path).unwrap_or_else(|err|{
+		eprintln!("Could not rename {file:?}: {err:?}");
 		process::exit(Error::last_os_error()
 			.raw_os_error()
 			.unwrap()
