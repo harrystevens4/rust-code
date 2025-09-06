@@ -2,9 +2,9 @@
 #[derive(Debug,PartialEq)]
 pub struct Args {
 	//          arg  parameter
-	short: Vec<(String,Option<String>)>,
-	long: Vec<(String,Option<String>)>,
-	other: Vec<String>,
+	pub short: Vec<(String,Option<String>)>,
+	pub long: Vec<(String,Option<String>)>,
+	pub other: Vec<String>,
 }
 #[derive(Debug,Clone,PartialEq)]
 pub enum ArgError {
@@ -24,7 +24,7 @@ impl Args {
 	//      (None,         Some("width"),    true     )]
 	//passing a parameter looks like this:
 	// `--width 20` or `-w 20`
-	fn new(args: Vec<String>, format: Vec<(Option<&str>,Option<&str>,bool)>) -> Result<Self,ArgError> {
+	pub fn new(args: Vec<String>, format: Vec<(Option<&str>,Option<&str>,bool)>) -> Result<Self,ArgError> {
 		let arg_has_parameter = move |arg: &ArgType|{
 			for arg_info in &format{
 				match arg {
@@ -95,7 +95,7 @@ impl Args {
 		Ok(args_struct)
 	}
 	//returns relevant argtype with leading '-'s stripped off
-	fn classify(arg: String) -> ArgType {
+	pub fn classify(arg: String) -> ArgType {
 		// '-' counts as an other
 		// "--" is dealt with in new
 		// "-asdf" and "-b" are shorts
@@ -105,6 +105,31 @@ impl Args {
 		else if arg[..2] == *"--" {ArgType::Long(arg[2..].into())}
 		else if arg[..1] == *"-" {ArgType::Short(arg[1..].into())}
 		else {ArgType::Other(arg)}
+	}
+	pub fn has_long(&self, long: &str) -> bool {
+		for arg in &self.long {
+			if arg.0 == long {return true}
+		}
+		false
+	}
+	pub fn has_short(&self, short: &str) -> bool {
+		for arg in &self.short {
+			if arg.0 == short {return true}
+		}
+		false
+	}
+	pub fn get_arg<'a>(&'a self, short_opt: Option<&str>, long_opt: Option<&str>) -> Option<&'a str>{
+		if let Some(long) = long_opt {
+			for arg in &self.long {
+				if arg.0 == long {return arg.1.as_deref()}
+			}
+		}
+		if let Some(short) = short_opt {
+			for arg in &self.short {
+				if arg.0 == short {return arg.1.as_deref()}
+			}
+		}
+		None
 	}
 }
 //======================= tests =======================
