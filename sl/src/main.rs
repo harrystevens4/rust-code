@@ -1,4 +1,5 @@
 use std::path::Path;
+use std::os::unix::fs::MetadataExt;
 use std::ffi::OsString;
 use std::env;
 
@@ -8,11 +9,12 @@ unsafe extern "C" {
 }
 
 fn main() {
-	let dirs = env::args()
+	let mut dirs = env::args()
 		.enumerate()
 		.filter(|&(i,_)| i != 0) //skip argv[0]
 		.map(|x| x.1)
 		.collect::<Vec<_>>();
+		if dirs.len() == 0 {dirs.push(".".into())}
 	for arg in dirs{
 		let dir = Path::new(&arg);
 		println!("{}",match dir.file_name().unwrap_or(&OsString::from("..")).to_str(){
@@ -39,10 +41,11 @@ fn print_dir(path: &Path, indent: String){
 						Ok(name) => name,
 						Err(e) => {eprintln!("{:?}: Bad unicode data",e); String::new()},
 					};
+					let pretty_file_name = format!("{}{}\x1b[39;49m",get_highlight(<&Path>::from(&item_path)),file_name);
 					//====== print the ones with ├ ======
-					if i != items.len()-1 {print_clamped(format!("{}├─{}",&indent,file_name),width)}
+					if i != items.len()-1 {print_clamped(format!("{}├─{}",&indent,pretty_file_name),width)}
 					//====== the last one should use └ ======
-					else {print_clamped(format!("{}└─{}",&indent,file_name),width)}
+					else {print_clamped(format!("{}└─{}",&indent,pretty_file_name),width)}
 					if item_path.is_dir() {print_dir(&item_path.as_path(),indent.clone()+
 						if i == items.len()-1 {"  "}
 						else {"│ "}
@@ -55,4 +58,12 @@ fn print_dir(path: &Path, indent: String){
 }
 fn print_clamped(string: String, width: i32){
 	println!("{}",string.chars().take(width as usize).collect::<String>())
+}
+fn get_highlight(path: &Path) -> &str {
+	if path.is_dir() {return "\x1b[34m"}
+	if path.is_symlink() {return "\x1b[36m"}
+	if let Ok(metadata) = path.metadata() {
+		if metadata.mode() & 0o11 != 0 {return "\x1b[32m"}
+	}
+	""
 }
