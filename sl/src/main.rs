@@ -58,10 +58,8 @@ fn main() {
 	if dirs.len() == 0 {dirs.push(".".into())}
 	for arg in dirs{
 		let dir = Path::new(&arg);
-		println!("{}",match dir.file_name().unwrap_or(&OsString::from("..")).to_str(){
-			Some(name) => name,
-			None => {eprintln!("Path has bad unicode data"); continue},
-		});
+		let name = if config.colour {get_pretty_name(dir)} else {get_path_name(dir)};
+		println!("{}",name);
 		if dir.exists() {print_dir(dir,"".into(),0,&config)}
 	}
 }
@@ -87,7 +85,7 @@ fn print_dir(path: &Path, indent: String, depth: usize, config: &Config){
 					};
 					//====== colour filename if enabled ======
 					let pretty_file_name = 
-						if config.colour {format!("{}{}\x1b[39;49m",get_highlight(<&Path>::from(&item_path)),file_name)}
+						if config.colour {get_pretty_name(<&Path>::from(&item_path))}
 						else {file_name};
 					//====== print the ones with ├ ======
 					if i != items.len()-1 {print_clamped(format!("{}├─{}",&indent,pretty_file_name),width)}
@@ -106,11 +104,16 @@ fn print_dir(path: &Path, indent: String, depth: usize, config: &Config){
 fn print_clamped(string: String, width: i32){
 	println!("{}",string.chars().take(width as usize).collect::<String>())
 }
-fn get_highlight(path: &Path) -> &str {
-	if path.is_dir() {return "\x1b[34m"}
-	if path.is_symlink() {return "\x1b[36m"}
-	if let Ok(metadata) = path.metadata() {
-		if metadata.mode() & 0o11 != 0 {return "\x1b[32m"}
-	}
-	""
+fn get_path_name(path: &Path) -> String {
+	if let Some(str_name) = path.file_name() {str_name.to_str().unwrap_or("").into()} else {"..".into()}
+}
+fn get_pretty_name(path: &Path) -> String {
+	let start_code = {
+		if path.is_dir() {"\x1b[34m"}
+		else if path.is_symlink() {"\x1b[36m"}
+		else if let Ok(metadata) = path.metadata() && metadata.mode() & 0o11 != 0 {"\x1b[32m"}
+		else {""}
+	};
+	let file_name = if let Some(str_name) = path.file_name() {str_name.to_str().unwrap_or("")} else {".."};
+	format!("{start_code}{}\x1b[39;49m",file_name)
 }
