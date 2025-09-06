@@ -108,12 +108,14 @@ fn get_path_name(path: &Path) -> String {
 	if let Some(str_name) = path.file_name() {str_name.to_str().unwrap_or("").into()} else {"..".into()}
 }
 fn get_pretty_name(path: &Path) -> String {
+	//ansi escape code
 	let start_code = {
 		if path.is_dir() {"\x1b[34m"}
 		else if path.is_symlink() {"\x1b[36m"}
 		else if let Ok(metadata) = path.metadata() && metadata.mode() & 0o11 != 0 {"\x1b[32m"}
 		else {""}
 	};
+	//why are there so many steps to convert &OsStr to &str?
 	let file_name = if let Some(str_name) = path.file_name() {str_name.to_str().unwrap_or("")} else {".."};
-	format!("{start_code}{}\x1b[39;49m",file_name)
+	format!("{start_code}{}\x1b[39;49m{}",file_name,if path.is_dir() {"/"} else {""}) //add "/" on the end if dir
 }
