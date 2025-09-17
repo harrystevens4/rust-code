@@ -5,3 +5,4 @@ edition = "2024"
 
 [dependencies]
 args = {path = "../args"}
+iniconfig = {path = "../iniconfig"}
