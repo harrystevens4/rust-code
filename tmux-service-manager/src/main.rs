@@ -5,7 +5,7 @@ use std::collections::HashMap;
 use std::fs;
 use std::env;
 use std::path::Path;
-use std::process::ExitCode;
+use std::process::{Command,ExitCode};
 
 #[derive(Debug)]
 struct Service {
@@ -70,7 +70,23 @@ fn main() -> ExitCode {
 		}
 	};
 	let config = ConfigFile::from(config_file.as_str());
-	println!("{:?}",config);
+	//println!("{:?}",config);
+	//====== start tmuxes ======
+	for section in config {
+		let name = section.name();
+		println!("Creating session \"{}\"...",name);
+		let mut args = vec!["new","-d","-s",name];
+		if let Some(command) = section.properties().get("command"){
+			args.push(command);
+		}
+		let mut command = Command::new("tmux");
+			
+		command.args(args);
+		if let Some(cwd) = section.properties().get("cwd"){
+			command.current_dir(cwd);
+		}
+		command.spawn();
+	}
 
 	//====== success ======
 	ExitCode::SUCCESS
