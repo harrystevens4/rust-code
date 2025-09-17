@@ -75,6 +75,7 @@ fn main() -> ExitCode {
 	for section in config {
 		let name = section.name();
 		println!("Creating session \"{}\"...",name);
+		println!("{:?}",section.properties());
 		let mut args = vec!["new","-d","-s",name];
 		if let Some(command) = section.properties().get("command"){
 			args.push(command);
