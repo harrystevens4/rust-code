@@ -1,4 +1,5 @@
 #![feature(trim_prefix_suffix)]
+#![allow(dead_code)]
 use std::collections::HashMap;
 
 #[derive(Debug)]
@@ -25,7 +26,6 @@ impl From<&str> for ConfigFile {
 }
 
 fn parse_config(raw_config: &str) -> Vec<ConfigSection>{
-	let config_data: Vec<ConfigSection> = vec![];
 	let lines = raw_config.split('\n').collect::<Vec<&str>>();
 	let mut sections = read_label("top_level",lines.into_iter());
 	//the first "section" will be everything before the first label, so strip it off
