@@ -1,20 +1,36 @@
 #![feature(trim_prefix_suffix)]
 #![allow(dead_code)]
+
 use std::collections::HashMap;
 
-#[derive(Debug)]
+#[derive(Debug,Clone)]
 pub struct ConfigFile {
 	sections: Vec<ConfigSection>,
 }
-#[derive(Debug)]
+#[derive(Debug,Clone)]
 pub struct ConfigSection {
 	name: String,
 	properties: HashMap<String,String>,
 }
 
+impl ConfigSection {
+	pub fn name<'a>(&'a self) -> &'a str {
+		&self.name
+	}
+	pub fn properties<'a>(&'a self) -> &'a HashMap<String,String> {
+		&self.properties
+	}
+}
 impl ConfigFile {
 	fn new() -> Self {
 		Self { sections: vec![] }
+	}
+}
+impl IntoIterator for ConfigFile {
+	type Item = ConfigSection;
+	type IntoIter = <Vec<ConfigSection> as IntoIterator>::IntoIter;
+	fn into_iter(self) -> Self::IntoIter {
+		self.sections.clone().into_iter()
 	}
 }
 impl From<&str> for ConfigFile {
@@ -47,7 +63,7 @@ fn read_label<'a>(name: &str, mut lines: impl Iterator<Item = &'a str>) -> Vec<C
 	//====== for line in lines ======
 	loop {
 		//the flipping for loop calls into_iterator which moves. SO ANOYING
-		let line = match lines.next() { Some(v) => v, None => break, };
+		let line = match lines.next() { Some(v) => crop_comments(v), None => break, };
 		//====== if it is a valid property, add it to the hashmap ======
 		if is_property(line){
 			let (key, value) = extract_property(line);
@@ -69,5 +85,8 @@ fn is_property(line: &str) -> bool {
 }
 fn extract_property(line: &str) -> (String,String){
 	let result = line.split('=').take(2).collect::<Vec<_>>();
-	(result[0].into(), result[1].into())
+	(result[0].trim().into(), result[1].trim().into())
+}
+fn crop_comments<'a>(line: &'a str) -> &'a str {
+	line.split('#').next().unwrap()
 }
