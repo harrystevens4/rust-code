@@ -118,6 +118,9 @@ impl Args {
 		}
 		false
 	}
+	pub fn has(&self, short: &str, long: &str) -> bool{
+		return self.has_long(long) || self.has_short(short)
+	}
 	pub fn get_arg<'a>(&'a self, short_opt: Option<&str>, long_opt: Option<&str>) -> Option<&'a str>{
 		if let Some(long) = long_opt {
 			for arg in &self.long {
