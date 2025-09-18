@@ -1,22 +1,25 @@
 #![feature(trim_prefix_suffix)]
 use args::Args;
 use iniconfig::ConfigFile;
-use std::collections::HashMap;
 use std::fs;
 use std::env;
 use std::path::Path;
 use std::process::{Command,ExitCode};
 
-#[derive(Debug)]
-struct Service {
-	name: String,
-	properties: HashMap<String,String>,
-}
-
 fn print_help(){
 	println!("usage: {} [options]",env::args().next().unwrap_or("program".to_string()));
 	println!("	-h, --help          : print help");
 	println!("	-c, --config <path> : use config file at path provided");
+	println!("The default config file is in ~/.config/tmux-service-manager/config.ini");
+	println!("Example:");
+	println!("[session name]");
+	println!("cwd=current/working/directory");
+	println!("command=custom --command -to run");
+	println!("#comment");
+	println!("[Other session name]");
+	println!("#sessions may be empty to run");
+	println!("#a default tmux session");
+	println!("#cwd and command are optional");
 }
 
 fn main() -> ExitCode {
@@ -54,7 +57,7 @@ fn main() -> ExitCode {
 				return ExitCode::FAILURE
 			}
 		};
-		default_config_path.push(".config/tmux-service-manager/startup.cfg");
+		default_config_path.push(".config/tmux-service-manager/config.ini");
 		config_path = default_config_path.leak();
 	}
 	//====== read config file ======
@@ -86,7 +89,7 @@ fn main() -> ExitCode {
 		if let Some(cwd) = section.properties().get("cwd"){
 			command.current_dir(cwd);
 		}
-		command.spawn();
+		let _ = command.spawn();
 	}
 
 	//====== success ======
