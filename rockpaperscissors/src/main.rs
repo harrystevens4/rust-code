@@ -69,6 +69,6 @@ fn compare_win(player_choice: u8, computer_choice: u8){
 	println!("====== I chose ======\n{}",ART[computer_choice as usize]);
 	print!("---> Therefore, ");
 	if player_choice == (computer_choice+1)%3 {println!("you win")}
-	else if player_choice == computer_choice {println!("we raw")}
+	else if player_choice == computer_choice {println!("we draw")}
 	else {println!("you lose")}
 }
