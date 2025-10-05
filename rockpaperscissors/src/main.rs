@@ -45,8 +45,8 @@ const ART: [&str; 3] = [
 	ROCK_ASCII,PAPER_ASCII,SCISSORS_ASCII
 ];
 
+use std::io;
 fn main() -> io::Result<()>{
-	use std::io;
 	use rand::{Rng,rng};
     println!("Enter rock, paper or scissors");
 	loop {
@@ -57,8 +57,9 @@ fn main() -> io::Result<()>{
 			"rock"     | "r" => compare_win(0,computer_choice),
 			"paper"    | "p" => compare_win(1,computer_choice),
 			"scissors" | "s" => compare_win(2,computer_choice),
+			"" => break Ok(()),
 			_ => {
-				println!("unrecognised word");
+				eprintln!("unrecognised word {:?}",line.trim());
 				continue;
 			},
 		}
@@ -67,8 +68,8 @@ fn main() -> io::Result<()>{
 fn compare_win(player_choice: u8, computer_choice: u8){
 	println!("====== You chose ======\n{}",ART[player_choice as usize]);
 	println!("====== I chose ======\n{}",ART[computer_choice as usize]);
-	print!("---> Therefore, ");
-	if player_choice == (computer_choice+1)%3 {println!("you win")}
-	else if player_choice == computer_choice {println!("we draw")}
-	else {println!("you lose")}
+	print!("---> ");
+	if player_choice == (computer_choice+1)%3 {println!("You win")}
+	else if player_choice == computer_choice {println!("Draw")}
+	else {println!("You lose")}
 }
