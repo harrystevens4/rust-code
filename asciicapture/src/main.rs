@@ -4,6 +4,10 @@ use std::io::Error;
 use libspa::{pod::*,utils::*,param::*};
 use pipewire::{main_loop::*,properties::*,stream::*,context::*};
 
+mod images;
+use images::Image;
+
+
 //using this to pass all our variables around callbacks and things
 struct UserData {
 	format: video::VideoInfoRaw, //for format negotiation
@@ -48,8 +52,8 @@ fn main() -> Result<(), Box<dyn std::error::Error>>{
 	//	),
 	//};
 	//====== properties??? ======
-	let mut video_info = video::VideoInfoRaw::new();
-	video_info.set_format(video::VideoFormat::RGB);
+	//let mut video_info = video::VideoInfoRaw::new();
+	//video_info.set_format(video::VideoFormat::RGB);
 	let obj = Object {
 		type_: SpaTypes::ObjectParamFormat.as_raw(),
 		id: ParamType::EnumFormat.as_raw(),
@@ -67,7 +71,8 @@ fn main() -> Result<(), Box<dyn std::error::Error>>{
 			//property!(
 			//	libspa::param::format::FormatProperties::VideoFormat,
 			//	Id,
-			//	libspa::param::video::VideoFormat::RGB
+			//	//i guess this is the only accepted format???
+			//	libspa::param::video::VideoFormat::BGRx
 			//),
 		],
 	};
@@ -110,7 +115,18 @@ fn main() -> Result<(), Box<dyn std::error::Error>>{
 		.process(|stream, user_data| match stream.dequeue_buffer(){
 			None => println!("stream queue empty"),
 			Some(mut buffer) => {
-				println!("data :)");
+				let available_data = buffer.datas_mut(); //&mut [Data]
+				if available_data.is_empty() { return }
+				//println!("{:?}",available_data);
+				//in theory there should only be _one peice_ of data
+				if let Some(pixel_array) = available_data[0].data() {
+					//println!("{:?}",pixel_array);
+					let image = Image::new(
+						user_data.format.size().width as usize,
+						user_data.format.size().height as usize,
+						pixel_array
+					);
+				}
 			}
 		})
 		.register()?;
