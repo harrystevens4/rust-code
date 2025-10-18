@@ -64,6 +64,11 @@ fn main() -> Result<(), Box<dyn std::error::Error>>{
 				Id,
 				libspa::param::format::MediaSubtype::Raw
 			),
+			//property!(
+			//	libspa::param::format::FormatProperties::VideoFormat,
+			//	Id,
+			//	libspa::param::video::VideoFormat::RGB
+			//),
 		],
 	};
 	let values: Vec<u8> = serialize::PodSerializer::serialize(
@@ -74,12 +79,32 @@ fn main() -> Result<(), Box<dyn std::error::Error>>{
 	.0
 	.into_inner();
 	let mut params = [Pod::from_bytes(&values).unwrap()];
-	//====== setup callbacks ======
+	//====== setup stream callbacks ======
 	let listener = stream
 		.add_local_listener_with_user_data(user_data)
 		//format negotiation
 		.param_changed(|_, user_data, id, param| {
-			println!("parameter changed");
+			//none is to clear the format
+			if param.is_none() { return }
+			let param = param.unwrap();
+			// --- --- --- https://gitlab.freedesktop.org/pipewire/pipewire-rs/-/raw/main/pipewire/examples/audio-capture.rs?ref_type=heads --- --- ---
+			let (media_type, media_subtype) = match format_utils::parse_format(param) {
+            	Ok(v) => v,
+            	Err(_) => return,
+            };
+			println!("param changed to (media type, media subtype): {:?} {:?}",media_type,media_subtype);
+            // only accept raw audio
+			use libspa::param::format::*;
+            if media_type != MediaType::Video || media_subtype != MediaSubtype::Raw {
+            	return;
+            }
+            // call a helper function to parse the format for us.
+            user_data
+            	.format
+            	.parse(param)
+            	.expect("Failed to parse param changed to AudioInfoRaw");
+			// --- --- --- end --- --- ---
+			println!("{:?}",user_data.format);
 		})
 		//new data just dropped
 		.process(|stream, user_data| match stream.dequeue_buffer(){
