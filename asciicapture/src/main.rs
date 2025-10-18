@@ -3,8 +3,15 @@ use std::os::fd::{OwnedFd,FromRawFd};
 use std::io::Error;
 use libspa::{pod::*,utils::*,param::*};
 use pipewire::{main_loop::*,properties::*,stream::*,context::*};
+
+//using this to pass all our variables around callbacks and things
+struct UserData {
+	format: video::VideoInfoRaw, //for format negotiation
+	cursor_move: bool, //if the cursor for the stream position has moved
+}
+
 fn main() -> Result<(), Box<dyn std::error::Error>>{
-	//request screen cast
+	//====== request screen cast ======
 	let mut screen_cast = ScreenCast::new()?;
 	screen_cast.set_source_types(SourceType::MONITOR);
 	let screen_cast = screen_cast.start(None)?; //i looooove raii
@@ -20,8 +27,12 @@ fn main() -> Result<(), Box<dyn std::error::Error>>{
 	let context = ContextBox::new(&mainloop.loop_(),None)?;
 	let core = context.connect_fd(pipewire_fd,None)?;
 	//====== connect to the stream? idk what im doing ======
+	let mut user_data = UserData {
+		format: Default::default(),
+		cursor_move: false,
+	};
 	let stream_properties = PropertiesBox::new();
-	let stream = StreamBox::new(&core,"screen capture",stream_properties)?;
+	let stream = StreamBox::new(&core,"screen-capture",stream_properties)?;
 	//let mut supported_formats = object!{
 	//	libspa::utils::SpaTypes::ObjectParamFormat,
 	//	libspa::param::ParamType::EnumFormat,
@@ -63,7 +74,22 @@ fn main() -> Result<(), Box<dyn std::error::Error>>{
 	.0
 	.into_inner();
 	let mut params = [Pod::from_bytes(&values).unwrap()];
-	//finaly
+	//====== setup callbacks ======
+	let listener = stream
+		.add_local_listener_with_user_data(user_data)
+		//format negotiation
+		.param_changed(|_, user_data, id, param| {
+			println!("parameter changed");
+		})
+		//new data just dropped
+		.process(|stream, user_data| match stream.dequeue_buffer(){
+			None => println!("stream queue empty"),
+			Some(mut buffer) => {
+				println!("data :)");
+			}
+		})
+		.register()?;
+	//====== finaly ======
 	stream.connect(
 		Direction::Input,
 		Some(pipewire_node),
@@ -71,6 +97,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>>{
 		&mut params
 	)?;
 	println!("connected");
+	//====== continuously run the mainloop ======
 	mainloop.run();
 	Ok(())
 }
