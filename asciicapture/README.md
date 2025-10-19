@@ -3,7 +3,6 @@
 
 Uses xdg-desktop-portal to request a screen capture, and then renders what it sees in the terminal using ansi escape sequences
 
-
 # Usage
 
 `asciicapture`
@@ -11,6 +10,11 @@ Uses xdg-desktop-portal to request a screen capture, and then renders what it se
 # Install
 
 `cargo install --path .`
+
+## Requirements
+
+`libpipewire-dev libdbus-1-dev`
+If pipewire fails to compile, try installing clang
 
 # Bugs
 
