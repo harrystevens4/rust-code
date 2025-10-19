@@ -121,11 +121,12 @@ fn main() -> Result<(), Box<dyn std::error::Error>>{
 				//in theory there should only be _one peice_ of data
 				if let Some(pixel_array) = available_data[0].data() {
 					//println!("{:?}",pixel_array);
-					let image = Image::new(
+					let mut image = Image::new(
 						user_data.format.size().width as usize,
 						user_data.format.size().height as usize,
 						pixel_array
 					);
+					image.scale(0.2);
 					println!("{}",image.as_ascii());
 				}
 			}
