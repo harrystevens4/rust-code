@@ -7,7 +7,7 @@ pub struct Image {
 
 impl Image {
 	pub fn new(width: usize, height: usize, pixel_array: &[u8]) -> Self {
-		println!("{}",pixel_array.len());
+		//println!("{}",pixel_array.len());
 		let mut array = Vec::with_capacity(width*height*4);
 		array.extend(pixel_array);
 		Self {
@@ -16,16 +16,16 @@ impl Image {
 			pixel_array: array,
 		}
 	}
-	pub fn scale(&mut self, sf: f32) {
-		if sf > 1.0 { panic!("cannot enlarge image") }
-		let new_width = (self.width as f32) * sf;
-		let new_height = (self.height as f32) * sf;
+	pub fn scale(&mut self, sf_width: f32, sf_height: f32) {
+		if sf_width > 1.0 || sf_height > 1.0 { panic!("cannot enlarge image") }
+		let new_width = (self.width as f32) * sf_width;
+		let new_height = (self.height as f32) * sf_height;
 		let mut new_pixel_array: Vec<u8> = vec![0; new_width as usize * new_height as usize * 4];
 		//====== sample each new pixel from where its equivalent would be in the old array ======
 		for y in 0..(new_height as usize) {
 			for x in 0..(new_width as usize) {
-				let old_x = (x as f32 / sf).round() as usize;
-				let old_y = (y as f32 / sf).round() as usize;
+				let old_x = (x as f32 / sf_width).round() as usize;
+				let old_y = (y as f32 / sf_height).round() as usize;
 				let old_i = old_x + (old_y * self.width); //index into old array
 				let i = x + (y * new_width as usize); //index into new array
 				//sample where our pixel would have been

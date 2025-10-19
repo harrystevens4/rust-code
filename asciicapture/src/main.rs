@@ -126,8 +126,8 @@ fn main() -> Result<(), Box<dyn std::error::Error>>{
 						user_data.format.size().height as usize,
 						pixel_array
 					);
-					image.scale(0.2);
-					println!("{}",image.as_ascii());
+					image.scale(0.1,0.053);
+					println!("\x1b[3J{}",image.as_ascii());
 				}
 			}
 		})
