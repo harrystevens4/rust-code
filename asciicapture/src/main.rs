@@ -7,7 +7,6 @@ use pipewire::{main_loop::*,properties::*,stream::*,context::*};
 mod images;
 use images::Image;
 
-
 //using this to pass all our variables around callbacks and things
 struct UserData {
 	format: video::VideoInfoRaw, //for format negotiation
@@ -24,6 +23,8 @@ fn main() -> Result<(), Box<dyn std::error::Error>>{
 		.next()
 		.ok_or(Error::other("No streams provided"))?
 		.pipewire_node();
+	//====== grab the terminal size ======
+	let (term_width,term_height) = term_size::dimensions().unwrap_or((500,500));
 	//====== setup pipewire ======
 	let pipewire_fd = unsafe { OwnedFd::from_raw_fd(screen_cast.pipewire_fd()) };
 	let properties = PropertiesBox::new(); //i just bought a property in egypt
@@ -112,7 +113,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>>{
 			println!("{:?}",user_data.format);
 		})
 		//new data just dropped
-		.process(|stream, user_data| match stream.dequeue_buffer(){
+		.process(move |stream, user_data| match stream.dequeue_buffer(){
 			None => println!("stream queue empty"),
 			Some(mut buffer) => {
 				let available_data = buffer.datas_mut(); //&mut [Data]
@@ -120,14 +121,21 @@ fn main() -> Result<(), Box<dyn std::error::Error>>{
 				//println!("{:?}",available_data);
 				//in theory there should only be _one peice_ of data
 				if let Some(pixel_array) = available_data[0].data() {
+					//====== resize and output the image ======
 					//println!("{:?}",pixel_array);
+					let width = user_data.format.size().width as usize;
+					let height = user_data.format.size().height as usize;
 					let mut image = Image::new(
-						user_data.format.size().width as usize,
-						user_data.format.size().height as usize,
+						width,
+						height,
 						pixel_array
 					);
-					image.scale(0.1,0.053);
-					println!("\x1b[3J{}",image.as_ascii());
+					//image.scale(0.1,0.053);
+					image.scale(
+						(term_width-3) as f32 / width as f32,
+						(term_height-3) as f32 / height as f32
+					);
+					print!("\x1b[3J{}",image.as_ascii());
 				}
 			}
 		})
