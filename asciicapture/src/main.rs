@@ -126,6 +126,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>>{
 						user_data.format.size().height as usize,
 						pixel_array
 					);
+					println!("{}",image.as_ascii());
 				}
 			}
 		})
@@ -138,6 +139,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>>{
 		&mut params
 	)?;
 	println!("connected");
+	println!("Note: BGRx is the only supported video format");
 	//====== continuously run the mainloop ======
 	mainloop.run();
 	Ok(())
