@@ -132,8 +132,8 @@ fn main() -> Result<(), Box<dyn std::error::Error>>{
 					);
 					//image.scale(0.1,0.053);
 					image.scale(
-						(term_width-3) as f32 / width as f32,
-						(term_height-3) as f32 / height as f32
+						(term_width-1) as f32 / width as f32,
+						(term_height-1) as f32 / height as f32
 					);
 					print!("\x1b[3J{}",image.as_ascii());
 				}
