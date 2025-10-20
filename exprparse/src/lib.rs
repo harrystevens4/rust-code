@@ -95,7 +95,7 @@ fn parser(lexemes: Vec<Lexeme>) -> Result<Expression,ParseError> {
 				let right_operator = if i == lexemes.len()-1 {None} else {Some(lexemes[i+1].clone())};
 				if op_power(left_operator.clone())? < op_power(right_operator.clone())? {
 					//account for 2*2 + 3*3 where the plus is empty
-					if expressions.len() > 0 && expressions[expressions.len()-1].rvalue.is_some() {
+					if (expressions.len() > 0 && expressions[expressions.len()-1].rvalue.is_some()) || (expressions.len() == 0 && left_operator.is_some()) {
 						expressions.push(
 							ExpressionUnit {
 								operator: left_operator.ok_or(ParseError::ExpectedOperator)?.unwrap(),
@@ -139,17 +139,20 @@ fn parser(lexemes: Vec<Lexeme>) -> Result<Expression,ParseError> {
 		}
 		i+=1;
 	}
-	println!("{:?}",expressions);
 	//evaluate empty expression to 0
 	if expressions.len() == 0 { return Ok(Expression::Value("0".to_string())) }
+	dbg!(&expressions);
 	//absorb adjacent expressions into None lvalues and rvalues
-	Ok(Expression::Expression(merge_expressions(&expressions[..])))
+	dbg!(Ok(Expression::Expression(merge_expressions(&expressions[..]))))
 }
 
 fn merge_expressions(expressions: &[ExpressionUnit]) -> ExpressionUnit {
+	//TODO: expresion units seem to be being lost??
 	if expressions.len() == 1 { return expressions[0].clone() }
 	//find an expression to start with
 	for i in 0..(expressions.len()) {
+		//TODO: needs fixing
+		//if it is ["7-","8+8"], it start on "8*8" which is already full causing "7-" to be lost
 		if (expressions[i].lvalue.is_none() && expressions[i].rvalue.is_none()) || i == expressions.len()-1 {
 			let mut new_expression = expressions[i].clone();
 			if expressions[i].lvalue.is_none() && i != 0 {
@@ -286,7 +289,13 @@ mod tests {
 			Operator("+".into()),
 			Operand("y".into()),
 		]);
-		assert_eq!(lexer("1.1"),vec![Operand("1.1".into())])
+		assert_eq!(lexer("1.1"),vec![Operand("1.1".into())]);
+		assert_eq!(lexer("-42/2"),vec![
+			Operator("-".into()),
+			Operand("42".into()),
+			Operator("/".into()),
+			Operand("2".into()),
+		]);
     }
 	#[test]
 	fn evaluator_test() -> Result<(),Box<dyn Error>>{
@@ -296,6 +305,7 @@ mod tests {
 		assert_eq!(Expression::new("2*5+6/3")?.evaluate()?,12.0);
 		assert_eq!(Expression::new("-42")?.evaluate()?,-42.0);
 		assert_eq!(Expression::new("-42/2")?.evaluate()?,-21.0);
+		assert_eq!(Expression::new("8*8+7-6*9")?.evaluate()?,17.0);
 		Ok(())
 	}
 	#[test]
@@ -312,10 +322,16 @@ mod tests {
 				operator: "+".into(),
 			})
 		));
-		assert_eq!(parser(lexer("1+2+3+4")),Ok(Value("42".into())));
-		assert_eq!(parser(lexer("-1+4*4")),Ok(Value("42".into())));
-		assert_eq!(parser(lexer("1+2*2+3*4")),Ok(Value("42".into())));
-		assert_eq!(parser(lexer("1+2*2")),Ok(Value("42".into())));
-		assert_eq!(parser(lexer("+")),Ok(Value("42".into())));
+		assert_eq!(parser(lexer("-42/2")),Ok(
+			Expression(ExpressionUnit {
+				operator: "-".into(),
+				lvalue: None,
+				rvalue: Some(Box::new(Expression(ExpressionUnit {
+					operator: "/".into(),
+					lvalue: Some(Box::new(Value("42".into()))),
+					rvalue: Some(Box::new(Value("2".into()))),
+				}))),
+			})
+		));
 	}
 }
