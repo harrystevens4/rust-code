@@ -1,3 +1,4 @@
+#![allow(dead_code)]
 use std::iter::Peekable;
 use std::error::Error;
 use std::fmt::{Formatter,Display};
