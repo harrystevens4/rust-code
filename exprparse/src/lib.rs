@@ -5,31 +5,32 @@ use std::fmt::{Formatter,Display};
 use std::num::ParseFloatError;
 
 #[derive(PartialEq,Debug,Clone)]
-enum Lexeme {
+pub enum Lexeme {
 	Operator(String),
 	Operand(String),
 	OpenBrackets(String),
 	CloseBrackets(String),
 }
 #[derive(PartialEq,Debug,Clone)]
-struct ExpressionUnit {
+pub struct ExpressionUnit {
 	lvalue: Option<Box<Expression>>,
 	rvalue: Option<Box<Expression>>,
 	operator: String,
 }
 #[derive(PartialEq,Debug,Clone)]
-enum Expression {
+pub enum Expression {
 	Value(String),
 	Expression(ExpressionUnit),
 }
 #[derive(PartialEq,Debug)]
-enum ParseError {
+pub enum ParseError {
 	ExpectedOperator,
 	ExpectedOperand,
 	UnknownOperator,
+	UnexpectedValue,
 }
 #[derive(Debug)]
-enum EvalError {
+pub enum EvalError {
 	ParseFloatError(ParseFloatError),
 	UnknownOperator(String),
 }
@@ -86,24 +87,29 @@ fn op_power(operator: Option<Lexeme>) -> Result<i32,ParseError> {
 
 fn parser(lexemes: Vec<Lexeme>) -> Result<Expression,ParseError> {
 	//transform into array of Expression
-	let mut expressions: Vec<ExpressionUnit> = vec![];
+	let mut expressions: Vec<Expression> = vec![];
 	let mut i = 0;
 	while i < lexemes.len() {
 		use Lexeme::*;
+		use Expression as Exp;
 		match &lexemes[i] {
 			Operand(op) => { let expr_unit = {
 				let left_operator = if i == 0 {None} else {Some(lexemes[i-1].clone())};
 				let right_operator = if i == lexemes.len()-1 {None} else {Some(lexemes[i+1].clone())};
 				if op_power(left_operator.clone())? < op_power(right_operator.clone())? {
 					//account for 2*2 + 3*3 where the plus is empty
-					if (expressions.len() > 0 && expressions[expressions.len()-1].rvalue.is_some()) || (expressions.len() == 0 && left_operator.is_some()) {
-						expressions.push(
+					let last_expression_rvalue = {
+						if let Some(Exp::Expression(expr)) = expressions.iter().last() {
+							expr.rvalue.clone()
+						}else {None}
+					};
+					if last_expression_rvalue.is_some() || (expressions.len() == 0 && left_operator.is_some()) {
+						expressions.push(Exp::Expression(
 							ExpressionUnit {
 								operator: left_operator.ok_or(ParseError::ExpectedOperator)?.unwrap(),
-								lvalue: None,
-								rvalue: None,
+								lvalue: None, rvalue: None,
 							}
-						);
+						));
 					}
 					//right operator is stronger
 					ExpressionUnit {
@@ -114,58 +120,55 @@ fn parser(lexemes: Vec<Lexeme>) -> Result<Expression,ParseError> {
 				}else{
 					let rvalue = Some(Box::new(Expression::Value(op.into())));
 					//left operator same or greater than
-					if let Some(mut end) = expressions.pop() {
+					if let Some(Exp::Expression(mut end)) = expressions.pop() {
 						if end.rvalue.is_none() {
 							end.rvalue = rvalue;
 							end
 						}
 						else {
-							expressions.push(end);
+							expressions.push(Exp::Expression(end));
 							ExpressionUnit {
 								operator: left_operator.ok_or(ParseError::ExpectedOperator)?.unwrap(),
-								lvalue: None,
-								rvalue,
+								lvalue: None, rvalue,
 							}
 						}
 					}else {
 						ExpressionUnit {
 							operator: left_operator.ok_or(ParseError::ExpectedOperator)?.unwrap(),
-							lvalue: None,
-							rvalue,
+							lvalue: None, rvalue,
 						}
 					}
 				}
-			}; expressions.push(expr_unit) },
+			}; expressions.push(Exp::Expression(expr_unit)) },
 			_ => (),
 		}
 		i+=1;
 	}
 	//evaluate empty expression to 0
 	if expressions.len() == 0 { return Ok(Expression::Value("0".to_string())) }
-	dbg!(&expressions);
+	//dbg!(&expressions);
 	//absorb adjacent expressions into None lvalues and rvalues
-	dbg!(Ok(Expression::Expression(merge_expressions(&expressions[..])?)))
+	Ok(merge_expressions(&expressions[..])?)
 }
 
-fn merge_expressions(expressions: &[ExpressionUnit]) -> Result<ExpressionUnit,ParseError> {
+fn merge_expressions(expressions: &[Expression]) -> Result<Expression,ParseError> {
 	//base case
 	if expressions.len() == 1 { return Ok(expressions[0].clone()) }
-	if expressions[0].rvalue.is_none(){
+	if let Expression::Expression(expr) = &expressions[0] && expr.rvalue.is_none(){
 		//absorb the epxression to the right
-		let mut new_expression = expressions[0].clone();
-		new_expression.rvalue = Some(Box::new(Expression::Expression(
-			merge_expressions(&expressions[1..])?
-		)));
-		Ok(new_expression)
-	}else if expressions[1].lvalue.is_none(){
+		let mut new_expression = expr.clone();
+		new_expression.rvalue = Some(Box::new(merge_expressions(&expressions[1..])?));
+		Ok(Expression::Expression(new_expression))
+	}else if let Expression::Expression(expr) = &expressions[1] && expr.lvalue.is_none(){
 		//the expression to the right absorbs us
-		let mut new_expressions: Vec<ExpressionUnit> = expressions[1..]
+		let mut new_expressions: Vec<Expression> = expressions[1..]
 			.into_iter()
 			.map(|x| x.clone())
 			.collect();
-		new_expressions[0].lvalue = Some(Box::new(Expression::Expression(
-			expressions[0].clone()
-		)));
+		match &mut new_expressions[0] {
+			Expression::Expression(ex) => ex.lvalue = Some(Box::new(expressions[0].clone())),
+			Expression::Value(_) => Err(ParseError::UnexpectedValue)?,
+		};
 		merge_expressions(&new_expressions[..])
 	}else {Err(ParseError::ExpectedOperator)}
 }
@@ -190,7 +193,7 @@ fn lexer(input_string: &str) -> Vec<Lexeme>{
 			//read an operand
 			result.push(
 				Lexeme::Operand(read_token(
-					&mut input,|x| (x.is_ascii_digit()|| x == '.')
+					&mut input,|x| x.is_ascii_digit() || x == '.'
 				))
 			);
 		}else if next_char.is_ascii_alphabetic() {
