@@ -88,6 +88,8 @@ fn op_power(operator: Option<Lexeme>) -> Result<i32,ParseError> {
 }
 
 fn parser(lexemes: Vec<Lexeme>) -> Result<Expression,ParseError> {
+	//TODO: rewrite this so it turns the lexemes into Expression::Value or Expression::Expression({lvalue: None, rvalue: None, operator})
+	//maybe moving the bracket substitution out here and creating a vec of Expression before processing the operand absorbtion
 	//transform into array of Expression
 	let mut expressions: Vec<Expression> = vec![];
 	let mut i = 0;
@@ -359,6 +361,7 @@ mod tests {
 		assert_eq!(Expression::new("8*8+7-6*9")?.evaluate()?,17.0);
 		assert_eq!(Expression::new("3*(3+5)")?.evaluate()?,24.0);
 		assert_eq!(Expression::new("(8)+1")?.evaluate()?,9.0);
+		assert_eq!(Expression::new("3*(3+5)+7")?.evaluate()?,31.0);
 		Ok(())
 	}
 	#[test]
