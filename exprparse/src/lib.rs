@@ -143,52 +143,30 @@ fn parser(lexemes: Vec<Lexeme>) -> Result<Expression,ParseError> {
 	if expressions.len() == 0 { return Ok(Expression::Value("0".to_string())) }
 	dbg!(&expressions);
 	//absorb adjacent expressions into None lvalues and rvalues
-	dbg!(Ok(Expression::Expression(merge_expressions(&expressions[..]))))
+	dbg!(Ok(Expression::Expression(merge_expressions(&expressions[..])?)))
 }
 
-fn merge_expressions(expressions: &[ExpressionUnit]) -> ExpressionUnit {
-	//TODO: expresion units seem to be being lost??
-	if expressions.len() == 1 { return expressions[0].clone() }
-	//find an expression to start with
-	for i in 0..(expressions.len()) {
-		//TODO: needs fixing
-		//if it is ["7-","8*8"], it start on "8*8" which is already full causing "7-" to be lost
-		//find an expression with both lvalue and rvalue empty
-		if (expressions[i].lvalue.is_none() && expressions[i].rvalue.is_none()){//|| i == expressions.len()-1 {
-			let mut new_expression = expressions[i].clone();
-			if expressions[i].lvalue.is_none() && i != 0 {
-				new_expression.lvalue = Some(Box::new(
-					Expression::Expression(merge_expressions(&expressions[..i]))
-				));
-			}
-			if expressions[i].rvalue.is_none() && i != expressions.len()-1 {
-				new_expression.rvalue = Some(Box::new(
-					Expression::Expression(merge_expressions(&expressions[(i+1)..]))
-				));
-			}
-			return new_expression;
-		}
-	}
-	//if no such expression exists, settle for one with only one open
-	for i in (0..(expressions.len())).rev() {
-		//TODO: needs fixing
-		//if it is ["7-","8*8"], it start on "8*8" which is already full causing "7-" to be lost
-		if expressions[i].lvalue.is_none() && i != 0 {
-			let mut new_expression = expressions[i].clone();
-			new_expression.lvalue = Some(Box::new(
-				Expression::Expression(merge_expressions(&expressions[..i]))
-			));
-			return new_expression;
-		}
-		if expressions[i].rvalue.is_none() && i != expressions.len()-1 {
-			let mut new_expression = expressions[i].clone();
-			new_expression.rvalue = Some(Box::new(
-				Expression::Expression(merge_expressions(&expressions[(i+1)..]))
-			));
-			return new_expression;
-		}
-	}
-	panic!("Could not find starting expression");
+fn merge_expressions(expressions: &[ExpressionUnit]) -> Result<ExpressionUnit,ParseError> {
+	//base case
+	if expressions.len() == 1 { return Ok(expressions[0].clone()) }
+	if expressions[0].rvalue.is_none(){
+		//absorb the epxression to the right
+		let mut new_expression = expressions[0].clone();
+		new_expression.rvalue = Some(Box::new(Expression::Expression(
+			merge_expressions(&expressions[1..])?
+		)));
+		Ok(new_expression)
+	}else if expressions[1].lvalue.is_none(){
+		//the expression to the right absorbs us
+		let mut new_expressions: Vec<ExpressionUnit> = expressions[1..]
+			.into_iter()
+			.map(|x| x.clone())
+			.collect();
+		new_expressions[0].lvalue = Some(Box::new(Expression::Expression(
+			expressions[0].clone()
+		)));
+		merge_expressions(&new_expressions[..])
+	}else {Err(ParseError::ExpectedOperator)}
 }
 
 fn read_token<T: Fn(char) -> bool, I: Sized+Iterator<Item = char>>(input: &mut Peekable<I>, predicate: T) -> String {
