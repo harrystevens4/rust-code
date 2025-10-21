@@ -102,13 +102,13 @@ fn parser(lexemes: Vec<Lexeme>) -> Result<Expression,ParseError> {
 				i+=1;
 				let mut depth = 1;
 				loop {
-					if depth == 0 {break} //closing bracket
 					if i == lexemes.len() {Err(ParseError::UnclosedParenthesis)?}
 					match &lexemes[i] {
 						OpenBrackets(_) => depth += 1,
 						CloseBrackets(_) => depth -= 1,
 						_ => sub_expression.push(lexemes[i].clone()),
 					}
+					if depth == 0 {break} //closing bracket
 					i+=1;
 				}
 				expressions.push(parser(sub_expression)?);
@@ -143,13 +143,15 @@ fn parser(lexemes: Vec<Lexeme>) -> Result<Expression,ParseError> {
 				}else{
 					let rvalue = Some(Box::new(Expression::Value(op.into())));
 					//left operator same or greater than
-					if let Some(Exp::Expression(mut end)) = expressions.pop() {
+					let last_expression = expressions.iter().last().to_owned();
+					if let Some(Exp::Expression(end)) = last_expression {
 						if end.rvalue.is_none() {
-							end.rvalue = rvalue;
-							Exp::Expression(end)
+							let mut new_end = end.clone();
+							new_end.rvalue = rvalue;
+							let _ = expressions.pop();
+							Exp::Expression(new_end)
 						}
 						else {
-							expressions.push(Exp::Expression(end));
 							Exp::Expression(ExpressionUnit {
 								operator: left_operator.ok_or(ParseError::ExpectedOperator)?.unwrap(),
 								lvalue: None, rvalue,
@@ -166,11 +168,13 @@ fn parser(lexemes: Vec<Lexeme>) -> Result<Expression,ParseError> {
 			_ => (),
 		}
 		i+=1;
+		dbg!(&expressions);
 	}
 	//evaluate empty expression to 0
 	if expressions.len() == 0 { return Ok(Expression::Value("0".to_string())) }
 	//dbg!(&expressions);
 	//absorb adjacent expressions into None lvalues and rvalues
+	//dbg!(&expressions);
 	Ok(merge_expressions(&expressions[..])?)
 }
 
@@ -336,6 +340,13 @@ mod tests {
 			Operator("*".into()),
 			Operand("2".into()),
 			CloseBrackets(")".into()),
+		]);
+		assert_eq!(lexer("(8)+1"),vec![
+			OpenBrackets("(".into()),
+			Operand("8".into()),
+			CloseBrackets(")".into()),
+			Operator("+".into()),
+			Operand("1".into()),
 		]);
     }
 	#[test]
