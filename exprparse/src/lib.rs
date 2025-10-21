@@ -168,7 +168,6 @@ fn parser(lexemes: Vec<Lexeme>) -> Result<Expression,ParseError> {
 			_ => (),
 		}
 		i+=1;
-		dbg!(&expressions);
 	}
 	//evaluate empty expression to 0
 	if expressions.len() == 0 { return Ok(Expression::Value("0".to_string())) }
