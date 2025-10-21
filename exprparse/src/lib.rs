@@ -152,8 +152,9 @@ fn merge_expressions(expressions: &[ExpressionUnit]) -> ExpressionUnit {
 	//find an expression to start with
 	for i in 0..(expressions.len()) {
 		//TODO: needs fixing
-		//if it is ["7-","8+8"], it start on "8*8" which is already full causing "7-" to be lost
-		if (expressions[i].lvalue.is_none() && expressions[i].rvalue.is_none()) || i == expressions.len()-1 {
+		//if it is ["7-","8*8"], it start on "8*8" which is already full causing "7-" to be lost
+		//find an expression with both lvalue and rvalue empty
+		if (expressions[i].lvalue.is_none() && expressions[i].rvalue.is_none()){//|| i == expressions.len()-1 {
 			let mut new_expression = expressions[i].clone();
 			if expressions[i].lvalue.is_none() && i != 0 {
 				new_expression.lvalue = Some(Box::new(
@@ -165,6 +166,25 @@ fn merge_expressions(expressions: &[ExpressionUnit]) -> ExpressionUnit {
 					Expression::Expression(merge_expressions(&expressions[(i+1)..]))
 				));
 			}
+			return new_expression;
+		}
+	}
+	//if no such expression exists, settle for one with only one open
+	for i in (0..(expressions.len())).rev() {
+		//TODO: needs fixing
+		//if it is ["7-","8*8"], it start on "8*8" which is already full causing "7-" to be lost
+		if expressions[i].lvalue.is_none() && i != 0 {
+			let mut new_expression = expressions[i].clone();
+			new_expression.lvalue = Some(Box::new(
+				Expression::Expression(merge_expressions(&expressions[..i]))
+			));
+			return new_expression;
+		}
+		if expressions[i].rvalue.is_none() && i != expressions.len()-1 {
+			let mut new_expression = expressions[i].clone();
+			new_expression.rvalue = Some(Box::new(
+				Expression::Expression(merge_expressions(&expressions[(i+1)..]))
+			));
 			return new_expression;
 		}
 	}
