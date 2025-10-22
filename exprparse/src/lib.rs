@@ -317,6 +317,7 @@ fn apply_operator(left: f64, right: f64, op: &str) -> Result<f64,EvalError> {
 		"sin" => right.sin(),
 		"cos" => right.cos(),
 		"tan" => right.tan(),
+		"ln" => right.ln(),
 		_ => return Err(EvalError::UnknownOperator(op.to_string())),
 	})
 }
