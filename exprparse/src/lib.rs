@@ -123,9 +123,8 @@ fn lexemes_to_expressions(lexemes: Vec<Lexeme>) -> Result<Vec<Expression>,ParseE
 }
 
 fn parser(lexemes: Vec<Lexeme>) -> Result<Expression,ParseError> {
-	use Lexeme::*;
 	//====== transform into array of Expression ======
-	let mut transformed_lexemes: Vec<Expression> = lexemes_to_expressions(lexemes)?;
+	let transformed_lexemes: Vec<Expression> = lexemes_to_expressions(lexemes)?;
 	//====== merge adjacent Values into Expressions ======
 	let mut expressions: Vec<Expression> = vec![];
 	let mut i = 0;
@@ -147,13 +146,13 @@ fn parser(lexemes: Vec<Lexeme>) -> Result<Expression,ParseError> {
 				if i == 0 {None} 
 				else {Some(match transformed_lexemes[i-1].clone(){
 						Exp::Expression(expr) => expr,
-						Exp::Value(v) => Err(ParseError::UnexpectedValue)?,
+						Exp::Value(_) => Err(ParseError::UnexpectedValue)?,
 				})};
 			let right_operator =
 				if i == transformed_lexemes.len()-1 {None} 
 				else {Some(match transformed_lexemes[i+1].clone(){
 						Exp::Expression(expr) => expr,
-						Exp::Value(v) => Err(ParseError::UnexpectedValue)?,
+						Exp::Value(_) => Err(ParseError::UnexpectedValue)?,
 				})};
 			let operand = transformed_lexemes[i].clone();
 			if left_operator.is_none() && right_operator.is_none() {
