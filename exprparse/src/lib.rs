@@ -1,4 +1,5 @@
 #![allow(dead_code)]
+use std::collections::HashMap;
 use std::iter::Peekable;
 use std::error::Error;
 use std::fmt::{Formatter,Display};
@@ -35,6 +36,7 @@ pub enum ParseError {
 pub enum EvalError {
 	ParseFloatError(ParseFloatError),
 	UnknownOperator(String),
+	VariableUndefined(String),
 }
 
 impl Display for EvalError {
@@ -72,7 +74,10 @@ impl Expression {
 		parser(lexer(expression))
 	}
 	pub fn evaluate(&self) -> Result<f64,EvalError> {
-		evaluator(self.clone())
+		evaluator(self.clone(),&HashMap::new())
+	}
+	pub fn evaluate_with_substitution(&self, variables: &HashMap<String,f64>) -> Result<f64,EvalError>{
+		evaluator(self.clone(),&variables)
 	}
 }
 
@@ -333,18 +338,26 @@ fn parse_operand(op: &str) -> Result<f64,EvalError> {
 	f64::from_str(op).map_err(|e| EvalError::ParseFloatError(e))
 }
 
-fn evaluator(expr: Expression) -> Result<f64,EvalError> {
+fn substitute_variables(val: &str, variables: &HashMap<String,f64>) -> Result<f64,EvalError> {
+	if val.chars().all(|c| c.is_alphabetic()) {
+		variables
+			.get(val)
+			.ok_or(EvalError::VariableUndefined(val.into()))
+			.map(|v| v.to_owned())
+	}else {parse_operand(val)}
+}
+
+fn evaluator(expr: Expression, variables: &HashMap<String,f64>) -> Result<f64,EvalError> {
 	use Expression as Ex;
-	if let Ex::Value(value) = expr { return parse_operand(&value) }
 	match expr {
-		Ex::Value(v) => parse_operand(&v),
+		Ex::Value(v) => substitute_variables(&v,variables),
 		Ex::Expression(e) => {
 			let left = match e.lvalue {
-				Some(expr) => evaluator(*expr)?,
+				Some(expr) => evaluator(*expr,variables)?,
 				None => if is_function(&e.operator) {1.0} else {0.0}
 			};
 			let right = match e.rvalue {
-				Some(expr) => evaluator(*expr)?,
+				Some(expr) => evaluator(*expr,variables)?,
 				None => 0.0
 			};
 			apply_operator(left,right,e.operator.as_str())
