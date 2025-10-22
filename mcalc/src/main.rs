@@ -1,4 +1,5 @@
 use exprparse::Expression;
+use args::Args;
 use std::error::Error;
 use std::ffi::*;
 
@@ -22,29 +23,42 @@ fn gnu_readline(prompt: &str) -> Option<String> {
 }
 
 fn main() -> Result<(),Box<dyn Error>>{
-	let args: Vec<_> = std::env::args().collect();
-	if args.len() < 2 {
+	let args = Args::new(std::env::args().collect(),vec![
+		(Some("h"), Some("help"), false),
+	])?;
+	if args.has("h","help") {
+		print_help();
+		return Ok(());
+	}
+	if args.other.len() < 2 {
 		interactive_mode();
 	}else {
-		println!("{}",Expression::new(&args[1])?.evaluate()?);
+		println!("{}",Expression::new(&args.other[0])?.evaluate()?);
 	}
 	Ok(())
 }
 
 fn print_help(){
-	println!("Usage: {} [options] [equation]",std::env::args().next().unwrap());
+	println!("Usage: {} [options] [expression]",std::env::args().next().unwrap());
 	println!("Providing no equation will start interactive mode");
-	println!("Interactive mode allows you to use the variable \"a\" as a substitution of the previous answer");
+	println!("Interactive mode allows you to use the variable \"a\" as a substitution of the previous answer\nand entering an empty line causes it to re run the previous expression");
 }
 
 fn interactive_mode(){
-	let mut prev_answer = 0.0;
+	use std::collections::HashMap;
+	let mut vars = HashMap::from([("a".to_string(),0.0)]);
+	let mut prev_expression = String::new();
 	loop {
-		let line = match gnu_readline(">>>") { Some(l) => l, None => return, };
-		match Expression::new(&line).map(|expr| expr.evaluate()) {
+		let mut line = match gnu_readline(">>>") { Some(l) => l, None => return, };
+		if line.is_empty() {
+			line = prev_expression.clone();
+		}else {
+			prev_expression = line.clone();
+		}
+		match Expression::new(&line).map(|expr| expr.evaluate_with_substitution(&vars)) {
 			Ok(Ok(result)) => {
 				println!("{result}");
-				prev_answer = result;
+				let _ = vars.get_mut("a").map(|a| *a = result);
 			},
 			Ok(Err(e)) => println!("Error: {e:?}"),
 			Err(e) => println!("Error: {e:?}"),
