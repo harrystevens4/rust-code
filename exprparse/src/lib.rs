@@ -80,6 +80,11 @@ fn op_power(expression: Option<ExpressionUnit>) -> Result<i32,ParseError> {
 	match expression {
 		None => Ok(i32::MIN),
 		Some(expr) => {
+			//functions
+			if expr.operator.chars().all(|c| c.is_alphabetic()) {
+				return Ok(i32::MAX);
+			}
+			//normal operators
 			const OPERATORS: [&str; 5] = ["**","*","/","-","+"];
 			OPERATORS.into_iter().rev().position(|x| x == expr.operator).ok_or(ParseError::UnknownOperator).map(|x| x as i32)
 		}
@@ -295,6 +300,8 @@ fn lexer(input_string: &str) -> Vec<Lexeme>{
 					&mut input,|x| x.is_ascii_punctuation() && !("{[()]}".contains(x))
 				))
 			);
+		}else {
+			let _ = input.next();
 		}
 	}
 	result
@@ -307,6 +314,9 @@ fn apply_operator(left: f64, right: f64, op: &str) -> Result<f64,EvalError> {
 		"/" => left / right,
 		"-" => left - right,
 		"**" => left.powf(right),
+		"sin" => right.sin(),
+		"cos" => right.cos(),
+		"tan" => right.tan(),
 		_ => return Err(EvalError::UnknownOperator(op.to_string())),
 	})
 }
@@ -385,6 +395,13 @@ mod tests {
 			Operator("+".into()),
 			Operand("1".into()),
 		]);
+		assert_eq!(lexer("( 8 ) + 1"),vec![
+			OpenBrackets("(".into()),
+			Operand("8".into()),
+			CloseBrackets(")".into()),
+			Operator("+".into()),
+			Operand("1".into()),
+		]);
     }
 	#[test]
 	fn evaluator_test() -> Result<(),Box<dyn Error>>{
@@ -426,6 +443,17 @@ mod tests {
 			})
 		));
 		assert_eq!(parser(lexer("3*(3+5)")),Ok(
+			Expression(ExpressionUnit {
+				operator: "*".into(),
+				lvalue: Some(Box::new(Value("3".into()))),
+				rvalue: Some(Box::new(Expression(ExpressionUnit {
+					operator: "+".into(),
+					lvalue: Some(Box::new(Value("3".into()))),
+					rvalue: Some(Box::new(Value("5".into()))),
+				}))),
+			})
+		));
+		assert_eq!(parser(lexer("3 * ( 3 + 5 ) ")),Ok(
 			Expression(ExpressionUnit {
 				operator: "*".into(),
 				lvalue: Some(Box::new(Value("3".into()))),
