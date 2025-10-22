@@ -17,6 +17,15 @@ pub enum ArgType {
 	Short(String),
 	Long(String),
 }
+use std::fmt::{Display,Formatter};
+impl Display for ArgError {
+	fn fmt(&self, f: &mut Formatter<'_>) -> Result<(), std::fmt::Error>{
+		let result = format!("{self:?}");
+		let _ = f.write_str(&result);
+		Ok(())
+	}
+}
+impl std::error::Error for ArgError {}
 impl Args {
 	//format is passed a tuple like this:
 	//       short         long              parameter
