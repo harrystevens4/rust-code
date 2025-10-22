@@ -49,7 +49,8 @@ impl Image {
 			let brightness = (
 				r+g+b
 			) as f32 / (u8::MAX as usize*3_usize) as f32;
-			const CHAR_BRIGHTNESS: [char; 66] = ['@','B','%','8','&','W','M','#','*','o','a','h','k','b','d','p','q','w','m','Z','O','0','L','C','J','U','Y','X','z','c','v','u','n','x','r','j','f','t','/','\\','|','(',')','1','{','}','?','-','_','+','~','<','>','i','!','l','I',';',':',',','\"','^','`',',','\'','.'];
+			//67 xD
+			const CHAR_BRIGHTNESS: [char; 67] = ['@','B','%','8','&','W','M','#','*','o','a','h','k','b','d','p','q','w','m','Z','O','0','L','C','J','U','Y','X','z','c','v','u','n','x','r','j','f','t','/','\\','|','(',')','1','{','}','?','-','_','+','~','<','>','i','!','l','I',';',':',',','\"','^','`',',','\'','.',' '];
 			let position = ((CHAR_BRIGHTNESS.len()-1_usize) as f32 * (1.0-brightness)).round() as usize;
 			let colour_sequence = format!("\x1b[38;2;{r};{g};{b}m");
 			output.push_str(&colour_sequence);
