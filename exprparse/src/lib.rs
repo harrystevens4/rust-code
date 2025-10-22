@@ -131,7 +131,7 @@ fn lexemes_to_expressions(lexemes: Vec<Lexeme>) -> Result<Vec<Expression>,ParseE
 
 fn parser(lexemes: Vec<Lexeme>) -> Result<Expression,ParseError> {
 	//====== transform into array of Expression ======
-	let transformed_lexemes: Vec<Expression> = dbg!(lexemes_to_expressions(lexemes)?);
+	let transformed_lexemes: Vec<Expression> = lexemes_to_expressions(lexemes)?;
 	//====== merge adjacent Values into Expressions ======
 	let mut expressions: Vec<Expression> = vec![];
 	let mut i = 0;
@@ -217,7 +217,7 @@ fn parser(lexemes: Vec<Lexeme>) -> Result<Expression,ParseError> {
 	if expressions.len() == 0 { return Ok(Expression::Value("0".to_string())) }
 	//dbg!(&expressions);
 	//absorb adjacent expressions into None lvalues and rvalues
-	dbg!(&expressions);
+	//dbg!(&expressions);
 	//====== build a tree ======
 	Ok(merge_expressions(&expressions[..])?)
 }
