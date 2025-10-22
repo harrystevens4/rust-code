@@ -82,7 +82,7 @@ fn op_power(expression: Option<ExpressionUnit>) -> Result<i32,ParseError> {
 		Some(expr) => {
 			//functions
 			if expr.operator.chars().all(|c| c.is_alphabetic()) {
-				return Ok(0);
+				return Ok(i32::MAX);
 			}
 			//normal operators
 			const OPERATORS: [&str; 5] = ["**","*","/","-","+"];
@@ -119,10 +119,6 @@ fn lexemes_to_expressions(lexemes: Vec<Lexeme>) -> Result<Vec<Expression>,ParseE
 			CloseBrackets(_) => Err(ParseError::UnexpectedParenthesis)?,
 			Operand(op) => transformed_lexemes.push(Expression::Value(op.into())),
 			Operator(op) => {
-				//functions have an implicit 1 on their left
-				if op.chars().all(|c| c.is_alphabetic()) {
-					transformed_lexemes.push(Expression::Value("1".into()));
-				}
 				transformed_lexemes.push(Expression::Expression(ExpressionUnit {
 						operator: op.into(), lvalue: None, rvalue: None
 				}));
@@ -135,7 +131,7 @@ fn lexemes_to_expressions(lexemes: Vec<Lexeme>) -> Result<Vec<Expression>,ParseE
 
 fn parser(lexemes: Vec<Lexeme>) -> Result<Expression,ParseError> {
 	//====== transform into array of Expression ======
-	let transformed_lexemes: Vec<Expression> = lexemes_to_expressions(lexemes)?;
+	let transformed_lexemes: Vec<Expression> = dbg!(lexemes_to_expressions(lexemes)?);
 	//====== merge adjacent Values into Expressions ======
 	let mut expressions: Vec<Expression> = vec![];
 	let mut i = 0;
@@ -194,7 +190,7 @@ fn parser(lexemes: Vec<Lexeme>) -> Result<Expression,ParseError> {
 				//left operator same or greater than
 				let last_expression = expressions.iter().last().to_owned();
 				if let Some(Exp::Expression(end)) = last_expression {
-					if end.rvalue.is_none() {
+					if end.rvalue.is_none() && end.operator == left_operator.clone().ok_or(ParseError::ExpectedOperator)?.operator {
 						let mut new_end = end.clone();
 						new_end.rvalue = rvalue;
 						let _ = expressions.pop();
@@ -221,7 +217,7 @@ fn parser(lexemes: Vec<Lexeme>) -> Result<Expression,ParseError> {
 	if expressions.len() == 0 { return Ok(Expression::Value("0".to_string())) }
 	//dbg!(&expressions);
 	//absorb adjacent expressions into None lvalues and rvalues
-	//dbg!(&expressions);
+	dbg!(&expressions);
 	//====== build a tree ======
 	Ok(merge_expressions(&expressions[..])?)
 }
@@ -313,6 +309,10 @@ fn lexer(input_string: &str) -> Vec<Lexeme>{
 	result
 }
 
+fn is_function(op: &str) -> bool {
+	if op.chars().all(|c| c.is_ascii_alphanumeric()) && op.len() > 1 {true} else {false}
+}
+
 fn apply_operator(left: f64, right: f64, op: &str) -> Result<f64,EvalError> {
 	Ok(match op {
 		"*" => left * right,
@@ -320,10 +320,10 @@ fn apply_operator(left: f64, right: f64, op: &str) -> Result<f64,EvalError> {
 		"/" => left / right,
 		"-" => left - right,
 		"**" => left.powf(right),
-		"sin" => right.sin(),
-		"cos" => right.cos(),
-		"tan" => right.tan(),
-		"ln" => right.ln(),
+		"sin" => right.sin()*left,
+		"cos" => right.cos()*left,
+		"tan" => right.tan()*left,
+		"ln" => right.ln()*left,
 		_ => return Err(EvalError::UnknownOperator(op.to_string())),
 	})
 }
@@ -341,7 +341,7 @@ fn evaluator(expr: Expression) -> Result<f64,EvalError> {
 		Ex::Expression(e) => {
 			let left = match e.lvalue {
 				Some(expr) => evaluator(*expr)?,
-				None => 0.0
+				None => if is_function(&e.operator) {1.0} else {0.0}
 			};
 			let right = match e.rvalue {
 				Some(expr) => evaluator(*expr)?,
@@ -422,6 +422,10 @@ mod tests {
 		assert_eq!(Expression::new("3*(3+5)")?.evaluate()?,24.0);
 		assert_eq!(Expression::new("(8)+1")?.evaluate()?,9.0);
 		assert_eq!(Expression::new("3*(3+5)+7")?.evaluate()?,31.0);
+		assert_eq!(Expression::new("5+cos 0")?.evaluate()?,6.0);
+		assert_eq!(Expression::new("5+cos (0)")?.evaluate()?,6.0);
+		assert_eq!(Expression::new("5*cos (0)")?.evaluate()?,5.0);
+		assert_eq!(Expression::new("1+2cos (0)")?.evaluate()?,3.0);
 		Ok(())
 	}
 	#[test]
@@ -444,7 +448,7 @@ mod tests {
 				lvalue: Some(Box::new(Value("5".into()))),
 				rvalue: Some(Box::new(Expression(ExpressionUnit {
 					operator: "cos".into(),
-					lvalue: Some(Box::new(Value("1".into()))),
+					lvalue: None,
 					rvalue: Some(Box::new(Value("0".into()))),
 				}))),
 			})
@@ -453,11 +457,7 @@ mod tests {
 			Expression(ExpressionUnit {
 				operator: "*".into(),
 				lvalue: Some(Box::new(Value("5".into()))),
-				rvalue: Some(Box::new(Expression(ExpressionUnit {
-					operator: "cos".into(),
-					lvalue: Some(Box::new(Value("1".into()))),
-					rvalue: None,
-				}))),
+				rvalue: None,
 			})
 		));
 		assert_eq!(parser(lexer("3*(3+5)")),Ok(
@@ -479,6 +479,28 @@ mod tests {
 					operator: "+".into(),
 					lvalue: Some(Box::new(Value("3".into()))),
 					rvalue: Some(Box::new(Value("5".into()))),
+				}))),
+			})
+		));
+		assert_eq!(parser(lexer("5*cos(1)")),Ok(
+			Expression(ExpressionUnit {
+				operator: "*".into(),
+				lvalue: Some(Box::new(Value("5".into()))),
+				rvalue: Some(Box::new(Expression(ExpressionUnit {
+					operator: "cos".into(),
+					lvalue: None,
+					rvalue: Some(Box::new(Value("1".into()))),
+				}))),
+			})
+		));
+		assert_eq!(parser(lexer("5*2cos(1)")),Ok(
+			Expression(ExpressionUnit {
+				operator: "*".into(),
+				lvalue: Some(Box::new(Value("5".into()))),
+				rvalue: Some(Box::new(Expression(ExpressionUnit {
+					operator: "cos".into(),
+					lvalue: Some(Box::new(Value("2".into()))),
+					rvalue: Some(Box::new(Value("1".into()))),
 				}))),
 			})
 		));
