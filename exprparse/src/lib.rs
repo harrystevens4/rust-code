@@ -124,8 +124,6 @@ fn lexemes_to_expressions(lexemes: Vec<Lexeme>) -> Result<Vec<Expression>,ParseE
 
 fn parser(lexemes: Vec<Lexeme>) -> Result<Expression,ParseError> {
 	use Lexeme::*;
-	//TODO: rewrite this so it turns the lexemes into Expression::Value or Expression::Expression({lvalue: None, rvalue: None, operator})
-	//maybe moving the bracket substitution out here and creating a vec of Expression before processing the operand absorbtion
 	//====== transform into array of Expression ======
 	let mut transformed_lexemes: Vec<Expression> = lexemes_to_expressions(lexemes)?;
 	//====== merge adjacent Values into Expressions ======
