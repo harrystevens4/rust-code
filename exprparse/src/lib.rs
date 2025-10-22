@@ -82,7 +82,7 @@ fn op_power(expression: Option<ExpressionUnit>) -> Result<i32,ParseError> {
 		Some(expr) => {
 			//functions
 			if expr.operator.chars().all(|c| c.is_alphabetic()) {
-				return Ok(i32::MAX);
+				return Ok(0);
 			}
 			//normal operators
 			const OPERATORS: [&str; 5] = ["**","*","/","-","+"];
@@ -118,9 +118,15 @@ fn lexemes_to_expressions(lexemes: Vec<Lexeme>) -> Result<Vec<Expression>,ParseE
 			},
 			CloseBrackets(_) => Err(ParseError::UnexpectedParenthesis)?,
 			Operand(op) => transformed_lexemes.push(Expression::Value(op.into())),
-			Operator(op) => transformed_lexemes.push(Expression::Expression(ExpressionUnit {
-				operator: op.into(), lvalue: None, rvalue: None
-			})),
+			Operator(op) => {
+				//functions have an implicit 1 on their left
+				if op.chars().all(|c| c.is_alphabetic()) {
+					transformed_lexemes.push(Expression::Value("1".into()));
+				}
+				transformed_lexemes.push(Expression::Expression(ExpressionUnit {
+						operator: op.into(), lvalue: None, rvalue: None
+				}));
+			},
 		}
 		i += 1;
 	}
@@ -432,14 +438,25 @@ mod tests {
 				operator: "+".into(),
 			})
 		));
-		assert_eq!(parser(lexer("-42/2")),Ok(
+		assert_eq!(parser(lexer("5*cos 0")),Ok(
 			Expression(ExpressionUnit {
-				operator: "-".into(),
-				lvalue: None,
+				operator: "*".into(),
+				lvalue: Some(Box::new(Value("5".into()))),
 				rvalue: Some(Box::new(Expression(ExpressionUnit {
-					operator: "/".into(),
-					lvalue: Some(Box::new(Value("42".into()))),
-					rvalue: Some(Box::new(Value("2".into()))),
+					operator: "cos".into(),
+					lvalue: Some(Box::new(Value("1".into()))),
+					rvalue: Some(Box::new(Value("0".into()))),
+				}))),
+			})
+		));
+		assert_eq!(parser(lexer("5*cos")),Ok(
+			Expression(ExpressionUnit {
+				operator: "*".into(),
+				lvalue: Some(Box::new(Value("5".into()))),
+				rvalue: Some(Box::new(Expression(ExpressionUnit {
+					operator: "cos".into(),
+					lvalue: Some(Box::new(Value("1".into()))),
+					rvalue: None,
 				}))),
 			})
 		));
