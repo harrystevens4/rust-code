@@ -76,26 +76,22 @@ impl Expression {
 	}
 }
 
-fn op_power(operator: Option<Lexeme>) -> Result<i32,ParseError> {
-	match operator {
+fn op_power(expression: Option<ExpressionUnit>) -> Result<i32,ParseError> {
+	match expression {
 		None => Ok(i32::MIN),
-		Some(Lexeme::Operator(operator)) => {
+		Some(expr) => {
 			const OPERATORS: [&str; 5] = ["**","*","/","-","+"];
-			OPERATORS.into_iter().rev().position(|x| x == operator).ok_or(ParseError::UnknownOperator).map(|x| x as i32)
+			OPERATORS.into_iter().rev().position(|x| x == expr.operator).ok_or(ParseError::UnknownOperator).map(|x| x as i32)
 		}
-		Some(_) => Err(ParseError::ExpectedOperator)
+		//Some(_) => Err(ParseError::ExpectedOperator)
 	}
 }
 
-fn parser(lexemes: Vec<Lexeme>) -> Result<Expression,ParseError> {
-	//TODO: rewrite this so it turns the lexemes into Expression::Value or Expression::Expression({lvalue: None, rvalue: None, operator})
-	//maybe moving the bracket substitution out here and creating a vec of Expression before processing the operand absorbtion
-	//transform into array of Expression
-	let mut expressions: Vec<Expression> = vec![];
+fn lexemes_to_expressions(lexemes: Vec<Lexeme>) -> Result<Vec<Expression>,ParseError> {
+	use Lexeme::*;
 	let mut i = 0;
+	let mut transformed_lexemes = vec![];
 	while i < lexemes.len() {
-		use Lexeme::*;
-		use Expression as Exp;
 		match &lexemes[i] {
 			OpenBrackets(_) => {
 				//collect lexemes between brackets
@@ -113,62 +109,104 @@ fn parser(lexemes: Vec<Lexeme>) -> Result<Expression,ParseError> {
 					if depth == 0 {break} //closing bracket
 					i+=1;
 				}
-				expressions.push(parser(sub_expression)?);
+				transformed_lexemes.push(parser(sub_expression)?);
 			},
 			CloseBrackets(_) => Err(ParseError::UnexpectedParenthesis)?,
-			Operand(op) => { let expr = {
-				let left_operator = if i == 0 {None} else {Some(lexemes[i-1].clone())};
-				let right_operator = if i == lexemes.len()-1 {None} else {Some(lexemes[i+1].clone())};
-				if left_operator.is_none() && right_operator.is_none() {
-					Expression::Value(op.into())
-				}else if op_power(left_operator.clone())? < op_power(right_operator.clone())? {
-					//account for 2*2 + 3*3 where the plus is empty
-					let last_expression_rvalue = {
-						if let Some(Exp::Expression(expr)) = expressions.iter().last() {
-							expr.rvalue.clone()
-						}else {None}
-					};
-					if last_expression_rvalue.is_some() || (expressions.len() == 0 && left_operator.is_some()) {
-						expressions.push(Exp::Expression(
-							ExpressionUnit {
-								operator: left_operator.ok_or(ParseError::ExpectedOperator)?.unwrap(),
-								lvalue: None, rvalue: None,
-							}
-						));
+			Operand(op) => transformed_lexemes.push(Expression::Value(op.into())),
+			Operator(op) => transformed_lexemes.push(Expression::Expression(ExpressionUnit {
+				operator: op.into(), lvalue: None, rvalue: None
+			})),
+		}
+		i += 1;
+	}
+	Ok(transformed_lexemes)
+}
+
+fn parser(lexemes: Vec<Lexeme>) -> Result<Expression,ParseError> {
+	use Lexeme::*;
+	//TODO: rewrite this so it turns the lexemes into Expression::Value or Expression::Expression({lvalue: None, rvalue: None, operator})
+	//maybe moving the bracket substitution out here and creating a vec of Expression before processing the operand absorbtion
+	//====== transform into array of Expression ======
+	let mut transformed_lexemes: Vec<Expression> = lexemes_to_expressions(lexemes)?;
+	//====== merge adjacent Values into Expressions ======
+	let mut expressions: Vec<Expression> = vec![];
+	let mut i = 0;
+	while i < transformed_lexemes.len() {
+		use Expression as Exp;
+		//if its not a value or a full ExpressionUnit skip
+		match &transformed_lexemes[i] {
+			Exp::Expression(expr) => {
+				if expr.lvalue.is_none() || expr.rvalue.is_none() {
+					i+=1;
+					continue
+				}
+			},
+			_ => (),
+		}
+		//decide which operator to add it to (left or right)
+		let expr = {
+			let left_operator = 
+				if i == 0 {None} 
+				else {Some(match transformed_lexemes[i-1].clone(){
+						Exp::Expression(expr) => expr,
+						Exp::Value(v) => Err(ParseError::UnexpectedValue)?,
+				})};
+			let right_operator =
+				if i == transformed_lexemes.len()-1 {None} 
+				else {Some(match transformed_lexemes[i+1].clone(){
+						Exp::Expression(expr) => expr,
+						Exp::Value(v) => Err(ParseError::UnexpectedValue)?,
+				})};
+			let operand = transformed_lexemes[i].clone();
+			if left_operator.is_none() && right_operator.is_none() {
+				operand
+			}else if op_power(left_operator.clone())? < op_power(right_operator.clone())? {
+				//account for 2*2 + 3*3 where the plus is empty
+				let last_expression_rvalue = {
+					if let Some(Exp::Expression(expr)) = expressions.iter().last() {
+						expr.rvalue.clone()
+					}else {None}
+				};
+				if last_expression_rvalue.is_some() || (expressions.len() == 0 && left_operator.is_some()) {
+					expressions.push(Exp::Expression(
+						ExpressionUnit {
+							operator: left_operator.ok_or(ParseError::ExpectedOperator)?.operator,
+							lvalue: None, rvalue: None,
+						}
+					));
+				}
+				//right operator is stronger
+				Exp::Expression(ExpressionUnit {
+					operator: right_operator.ok_or(ParseError::ExpectedOperator)?.operator,
+					lvalue: Some(Box::new(operand)),
+					rvalue: None,
+				})
+			}else{
+				let rvalue = Some(Box::new(operand));
+				//left operator same or greater than
+				let last_expression = expressions.iter().last().to_owned();
+				if let Some(Exp::Expression(end)) = last_expression {
+					if end.rvalue.is_none() {
+						let mut new_end = end.clone();
+						new_end.rvalue = rvalue;
+						let _ = expressions.pop();
+						Exp::Expression(new_end)
 					}
-					//right operator is stronger
-					Exp::Expression(ExpressionUnit {
-						operator: right_operator.ok_or(ParseError::ExpectedOperator)?.unwrap(),
-						lvalue: Some(Box::new(Expression::Value(op.into()))),
-						rvalue: None,
-					})
-				}else{
-					let rvalue = Some(Box::new(Expression::Value(op.into())));
-					//left operator same or greater than
-					let last_expression = expressions.iter().last().to_owned();
-					if let Some(Exp::Expression(end)) = last_expression {
-						if end.rvalue.is_none() {
-							let mut new_end = end.clone();
-							new_end.rvalue = rvalue;
-							let _ = expressions.pop();
-							Exp::Expression(new_end)
-						}
-						else {
-							Exp::Expression(ExpressionUnit {
-								operator: left_operator.ok_or(ParseError::ExpectedOperator)?.unwrap(),
-								lvalue: None, rvalue,
-							})
-						}
-					}else {
+					else {
 						Exp::Expression(ExpressionUnit {
-							operator: left_operator.ok_or(ParseError::ExpectedOperator)?.unwrap(),
+							operator: left_operator.ok_or(ParseError::ExpectedOperator)?.operator,
 							lvalue: None, rvalue,
 						})
 					}
+				}else {
+					Exp::Expression(ExpressionUnit {
+						operator: left_operator.ok_or(ParseError::ExpectedOperator)?.operator,
+						lvalue: None, rvalue,
+					})
 				}
-			}; expressions.push(expr) },
-			_ => (),
-		}
+			}
+		};
+		expressions.push(expr);
 		i+=1;
 	}
 	//evaluate empty expression to 0
@@ -176,6 +214,7 @@ fn parser(lexemes: Vec<Lexeme>) -> Result<Expression,ParseError> {
 	//dbg!(&expressions);
 	//absorb adjacent expressions into None lvalues and rvalues
 	//dbg!(&expressions);
+	//====== build a tree ======
 	Ok(merge_expressions(&expressions[..])?)
 }
 
