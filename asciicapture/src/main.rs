@@ -7,10 +7,9 @@ use pipewire::{main_loop::*,properties::*,stream::*,context::*};
 mod images;
 use images::Image;
 
-//using this to pass all our variables around callbacks and things
+//this is what we pass to the stream callback
 struct UserData {
 	format: video::VideoInfoRaw, //for format negotiation
-	cursor_move: bool, //if the cursor for the stream position has moved
 }
 
 fn main() -> Result<(), Box<dyn std::error::Error>>{
@@ -31,30 +30,13 @@ fn main() -> Result<(), Box<dyn std::error::Error>>{
 	let mainloop = MainLoopBox::new(Some(properties.as_ref()))?;
 	let context = ContextBox::new(&mainloop.loop_(),None)?;
 	let core = context.connect_fd(pipewire_fd,None)?;
-	//====== connect to the stream? idk what im doing ======
-	let mut user_data = UserData {
+	//====== connect to the stream ======
+	let user_data = UserData {
 		format: Default::default(),
-		cursor_move: false,
 	};
 	let stream_properties = PropertiesBox::new();
 	let stream = StreamBox::new(&core,"screen-capture",stream_properties)?;
-	//let mut supported_formats = object!{
-	//	libspa::utils::SpaTypes::ObjectParamFormat,
-	//	libspa::param::ParamType::EnumFormat,
-	//	property!(
-	//		libspa::param::format::FormatProperties::MediaType,
-	//		Id,
-	//		libspa::param::format::MediaType::Video
-	//	),
-	//	property!(
-	//		libspa::param::format::FormatProperties::MediaSubtype,
-	//		Id,
-	//		libspa::param::format::MediaSubtype::Raw
-	//	),
-	//};
-	//====== properties??? ======
-	//let mut video_info = video::VideoInfoRaw::new();
-	//video_info.set_format(video::VideoFormat::RGB);
+	//====== format information ======
 	let obj = Object {
 		type_: SpaTypes::ObjectParamFormat.as_raw(),
 		id: ParamType::EnumFormat.as_raw(),
@@ -80,16 +62,14 @@ fn main() -> Result<(), Box<dyn std::error::Error>>{
 	let values: Vec<u8> = serialize::PodSerializer::serialize(
 	 	std::io::Cursor::new(Vec::new()),
 	 	&Value::Object(obj),
-	)
-	.unwrap()
-	.0
-	.into_inner();
+	).unwrap().0.into_inner();
 	let mut params = [Pod::from_bytes(&values).unwrap()];
 	//====== setup stream callbacks ======
-	let listener = stream
+	//when this object is dropped so are the callbacks so keep it in scope
+	let _listener = stream
 		.add_local_listener_with_user_data(user_data)
 		//format negotiation
-		.param_changed(|_, user_data, id, param| {
+		.param_changed(|_, user_data, _id, param| {
 			//none is to clear the format
 			if param.is_none() { return }
 			let param = param.unwrap();
@@ -99,16 +79,17 @@ fn main() -> Result<(), Box<dyn std::error::Error>>{
             	Err(_) => return,
             };
 			println!("param changed to (media type, media subtype): {:?} {:?}",media_type,media_subtype);
-            // only accept raw audio
+            //only accept raw video
 			use libspa::param::format::*;
             if media_type != MediaType::Video || media_subtype != MediaSubtype::Raw {
             	return;
             }
-            // call a helper function to parse the format for us.
+			//initialise our user_data's format with the format pipewire gave us
+			//this fills in the width and height for us too
             user_data
             	.format
             	.parse(param)
-            	.expect("Failed to parse param changed to AudioInfoRaw");
+            	.expect("Failed to parse new video format");
 			// --- --- --- end --- --- ---
 			println!("{:?}",user_data.format);
 		})
@@ -118,11 +99,9 @@ fn main() -> Result<(), Box<dyn std::error::Error>>{
 			Some(mut buffer) => {
 				let available_data = buffer.datas_mut(); //&mut [Data]
 				if available_data.is_empty() { return }
-				//println!("{:?}",available_data);
 				//in theory there should only be _one peice_ of data
 				if let Some(pixel_array) = available_data[0].data() {
 					//====== resize and output the image ======
-					//println!("{:?}",pixel_array);
 					let width = user_data.format.size().width as usize;
 					let height = user_data.format.size().height as usize;
 					let mut image = Image::new(
@@ -130,17 +109,18 @@ fn main() -> Result<(), Box<dyn std::error::Error>>{
 						height,
 						pixel_array
 					);
-					//image.scale(0.1,0.053);
+					//to fit terminal
 					image.scale(
 						(term_width-1) as f32 / width as f32,
 						(term_height-1) as f32 / height as f32
 					);
+					//clear screen then print
 					print!("\x1b[3J{}",image.as_ascii());
 				}
 			}
 		})
 		.register()?;
-	//====== finaly ======
+	//====== connect to the stream ======
 	stream.connect(
 		Direction::Input,
 		Some(pipewire_node),
