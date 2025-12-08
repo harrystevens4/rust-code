@@ -1,4 +1,5 @@
 use std::path::Path;
+use std::thread;
 use std::process::{Stdio,Command};
 use std::io::Read;
 use std::fs::File;
@@ -122,11 +123,31 @@ impl LeverFile {
 					}
 				}
 			}
+			//once stdout closes print anything on stderr
+			if let Some(ref mut stderr) = child.stderr {
+				let mut line_buffer = String::new();
+				loop {
+					//read some data
+					let mut stderr_buffer = [0; 64];
+					let count = stderr.read(&mut stderr_buffer)?;
+					if count == 0 {break}
+					//output in a nice format
+					for byte in &stderr_buffer[..count] {
+						let ch = char::from(*byte);
+						if ch == '\n' {
+							println!("-e-> {}",line_buffer);
+							line_buffer.truncate(0);
+						}else {
+							line_buffer.push(ch);
+						}
+					}
+				}
+			}
 			let exit_status = child.wait()?;
 			if !exit_status.success() {
 				eprintln!("Process exited with an error");
 				match exit_status.code() {
-					Some(code) => println!("{command:?} exited with status {code}",),
+					Some(code) => println!("{command:?} exited with code {code}",),
 					None => println!("{command:?} was terminated by signal",),
 				}
 				return Err(io::Error::other("Compilation error"))
