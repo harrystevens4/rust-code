@@ -4,6 +4,7 @@ use std::error::Error;
 use leverfile::LeverFile;
 
 fn main() -> Result<(),Box<dyn Error>> {
-	LeverFile::load("leverfile")?;
+	let leverfile = LeverFile::load("leverfile")?;
+	println!("{:?}",leverfile);
 	Ok(())
 }
