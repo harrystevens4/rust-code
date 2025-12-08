@@ -44,7 +44,10 @@ impl LeverFile {
 		//====== read the leverfile line by line ======
 		let mut section_name = String::from("global");
 		for (line_numer,raw_line) in leverfile.split('\n').into_iter().enumerate() {
-			let line = raw_line;
+			//remove comments
+			let line = if let Some(index) = raw_line.find('#') {
+				raw_line[..index].to_string()
+			}else {raw_line.to_string()};
 			//skip empty lines
 			if line.len() == 0 {continue}
 			//sections
