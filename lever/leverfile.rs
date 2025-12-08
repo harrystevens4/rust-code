@@ -1,5 +1,4 @@
 use std::path::Path;
-use std::thread;
 use std::process::{Stdio,Command};
 use std::io::Read;
 use std::fs::File;
@@ -91,13 +90,14 @@ impl LeverFile {
 			name,
 		})
 	}
-	pub fn compile<T: AsRef<Path>>(&self, path: T) -> io::Result<()>{
+	pub fn compile<T: AsRef<Path>>(&self, git_repo_path: T) -> io::Result<()>{
 		println!("=== Compiling {} ===",self.name);
 		for command in self.compile_commands.iter() {
 			//start a shell to execute each line
 			let mut child = Command::new("sh")
 				.arg("-c")
 				.arg(command)
+				.current_dir(&git_repo_path)
 				.stderr(Stdio::piped())
 				.stdout(Stdio::piped())
 				.stdin(Stdio::null())
@@ -153,7 +153,7 @@ impl LeverFile {
 				return Err(io::Error::other("Compilation error"))
 			}
 		}
-		println!("Successfull compile");
+		println!("Compiled {:?} without errors.",self.name);
 		Ok(())
 	}
 }
