@@ -5,7 +5,7 @@ use std::path::Path;
 use std::io::Read;
 
 pub struct LeverDB {
-	installed_packages: Vec<(String,String)> //(name,repo_location)
+	pub installed_packages: Vec<(String,String)> //(name,repo_location)
 }
 
 impl LeverDB {
@@ -14,7 +14,7 @@ impl LeverDB {
 		let mut installed_packages = vec![];
 		//load file
 		let mut database = String::new();
-		let _ = File::open(path.as_ref())?.read_to_string(&mut database);
+		let _ = File::open(path)?.read_to_string(&mut database);
 		//====== read the leverfile line by line ======
 		let mut section_name = String::from("");
 		for line in database.split('\n') {
@@ -33,7 +33,7 @@ impl LeverDB {
 						.collect::<Vec<_>>()
 						.try_into() 
 					else {continue}; //skip in line is invalid
-					installed_packages.push((name.to_string(),path.to_string()));
+					installed_packages.push((name.trim().to_string(),path.trim().to_string()));
 				},
 				_ => (),
 			}
