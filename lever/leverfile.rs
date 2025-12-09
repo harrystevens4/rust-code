@@ -92,68 +92,79 @@ impl LeverFile {
 	}
 	pub fn compile<T: AsRef<Path>>(&self, git_repo_path: T) -> io::Result<()>{
 		println!("=== Compiling {} ===",self.name);
-		for command in self.compile_commands.iter() {
-			//start a shell to execute each line
-			let mut child = Command::new("sh")
-				.arg("-c")
-				.arg(command)
-				.current_dir(&git_repo_path)
-				.stderr(Stdio::piped())
-				.stdout(Stdio::piped())
-				.stdin(Stdio::null())
-				.spawn()?;
-			println!("> {command}");
-			//read and print stdout from shell
-			if let Some(ref mut stdout) = child.stdout {
-				let mut line_buffer = String::new();
-				loop {
-					//read some data
-					let mut stdout_buffer = [0; 64];
-					let count = stdout.read(&mut stdout_buffer)?;
-					if count == 0 {break}
-					//output in a nice format
-					for byte in &stdout_buffer[..count] {
-						let ch = char::from(*byte);
-						if ch == '\n' {
-							println!("==> {}",line_buffer);
-							line_buffer.truncate(0);
-						}else {
-							line_buffer.push(ch);
-						}
-					}
-				}
-			}
-			//once stdout closes print anything on stderr
-			if let Some(ref mut stderr) = child.stderr {
-				let mut line_buffer = String::new();
-				loop {
-					//read some data
-					let mut stderr_buffer = [0; 64];
-					let count = stderr.read(&mut stderr_buffer)?;
-					if count == 0 {break}
-					//output in a nice format
-					for byte in &stderr_buffer[..count] {
-						let ch = char::from(*byte);
-						if ch == '\n' {
-							println!("-e-> {}",line_buffer);
-							line_buffer.truncate(0);
-						}else {
-							line_buffer.push(ch);
-						}
-					}
-				}
-			}
-			let exit_status = child.wait()?;
-			if !exit_status.success() {
-				eprintln!("Process exited with an error");
-				match exit_status.code() {
-					Some(code) => println!("{command:?} exited with code {code}",),
-					None => println!("{command:?} was terminated by signal",),
-				}
-				return Err(io::Error::other("Compilation error"))
-			}
-		}
+		run_commands(self.compile_commands.clone(),git_repo_path)?;
 		println!("Compiled {:?} without errors.",self.name);
 		Ok(())
 	}
+	pub fn install<T: AsRef<Path>>(&self, git_repo_path: T) -> io::Result<()>{
+		println!("=== Installing {} ===",self.name);
+		run_commands(self.install_commands.clone(),git_repo_path)?;
+		println!("Installed {:?} without errors.",self.name);
+		Ok(())
+	}
+}
+
+fn run_commands<T: AsRef<Path>>(commands: Vec<String>, execution_dir: T) -> io::Result<()>{
+	for command in commands {
+		//start a shell to execute each line
+		let mut child = Command::new("sh")
+			.arg("-c")
+			.arg(&command)
+			.current_dir(&execution_dir)
+			.stderr(Stdio::piped())
+			.stdout(Stdio::piped())
+			.stdin(Stdio::null())
+			.spawn()?;
+		println!("> {command}");
+		//read and print stdout from shell
+		if let Some(ref mut stdout) = child.stdout {
+			let mut line_buffer = String::new();
+			loop {
+				//read some data
+				let mut stdout_buffer = [0; 64];
+				let count = stdout.read(&mut stdout_buffer)?;
+				if count == 0 {break}
+				//output in a nice format
+				for byte in &stdout_buffer[..count] {
+					let ch = char::from(*byte);
+					if ch == '\n' {
+						println!("==> {}",line_buffer);
+						line_buffer.truncate(0);
+					}else {
+						line_buffer.push(ch);
+					}
+				}
+			}
+		}
+		//once stdout closes print anything on stderr
+		if let Some(ref mut stderr) = child.stderr {
+			let mut line_buffer = String::new();
+			loop {
+				//read some data
+				let mut stderr_buffer = [0; 64];
+				let count = stderr.read(&mut stderr_buffer)?;
+				if count == 0 {break}
+				//output in a nice format
+				for byte in &stderr_buffer[..count] {
+					let ch = char::from(*byte);
+					if ch == '\n' {
+						println!("-e-> {}",line_buffer);
+						line_buffer.truncate(0);
+					}else {
+						line_buffer.push(ch);
+					}
+				}
+			}
+		}
+		let exit_status = child.wait()?;
+		if !exit_status.success() {
+			eprintln!("Process exited with an error");
+			match exit_status.code() {
+				Some(code) => println!("{command:?} exited with code {code}",),
+				None => println!("{command:?} was terminated by signal",),
+			}
+			return Err(io::Error::other("Command Failed"))
+		}
+	}
+	Ok(())
 }
