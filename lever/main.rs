@@ -1,41 +1,68 @@
 mod leverfile;
+mod database;
 
 use std::error::Error;
 use leverfile::{LeverFile};
+use std::path::Path;
+use database::LeverDB;
 use std::env;
 use std::io;
+use std::process::exit;
 
-fn main() -> Result<(),Box<dyn Error>> {
+fn main(){
 	let command_line = env::args()
 		.collect::<Vec<_>>()[1..]
 		.to_owned();
-	match command_line.iter().map(|s| s.as_str()).next() {
+	let Ok(()) = (match command_line.iter().map(|s| s.as_str()).next() {
 		Some("compile") => compile(command_line[1..].into()),
 		Some("install") => install(command_line[1..].into()),
 		Some("update") => update(command_line[1..].into()),
 		Some("help") => Ok(help()),
 		Some(command) => {
 			eprintln!("Unknown command {command:?}");
-			Err(Box::new(io::Error::other("bad argument")))
+			Err(())
 		},
 		None => {
 			eprintln!("Expected command as first argument.");
-			Err(Box::new(io::Error::other("bad argument")))
+			Err(())
 		},
-	}
+	}) else {exit(1)};
 }
 
-fn compile(targets: Vec<String>) -> Result<(),Box<dyn Error>> {
-	let leverfile = LeverFile::load("leverfile")?;
-	leverfile.compile(".")?;
+fn compile(targets: Vec<String>) -> Result<(),()> {
+	let database = match LeverDB::load("lever.db") {
+		Ok(db) => db,
+		Err(e) => {
+			eprintln!("{e:?}");
+			return Err(());
+		}
+	};
+	if targets.len() == 0 {
+		//select all
+		for (name, location) in database.installed_packages {
+			println!("=== Compiling {} ===",name);
+			let path = Path::new(&location);
+			let Ok(leverfile) = LeverFile::load(path) else {
+				eprintln!("Loading leverfile at {path:?} failed.");
+				return Err(())
+			};
+			leverfile.compile(path)?;
+			println!("Compiled {:?} without errors.",name);
+		}
+	}else{
+		let leverfile = LeverFile::load("leverfile")?;
+		leverfile.compile(".")?;
+	}
 	Ok(())
 }
-fn install(targets: Vec<String>) -> Result<(),Box<dyn Error>> {
+fn install(targets: Vec<String>) -> Result<(),()> {
 	let leverfile = LeverFile::load("leverfile")?;
+	println!("=== Installing {} ===",leverfile.name);
 	leverfile.install(".")?;
+	println!("Installed {:?} without errors.",leverfile.name);
 	Ok(())
 }
-fn update(targets: Vec<String>) -> Result<(),Box<dyn Error>> {
+fn update(targets: Vec<String>) -> Result<(),()> {
 	for target in targets {
 		compile(vec![target.clone()])?;
 		install(vec![target.clone()])?;
