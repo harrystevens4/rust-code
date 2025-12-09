@@ -11,30 +11,17 @@ pub struct LeverFile {
 	url: Option<String>,
 	compile_commands: Vec<String>,
 	install_commands: Vec<String>,
-	name: String,
-}
-
-#[derive(Debug)]
-pub enum LeverFileError {
-	UnknownSection((String,usize)),
-	IoError(std::io::Error),
-	MissingSection(String),
-}
-
-impl Error for LeverFileError {}
-impl Display for LeverFileError {
-	fn fmt(&self, f: &mut Formatter<'_>) -> Result<(),std::fmt::Error> {
-		use self::LeverFileError::*;
-		match self {
-			UnknownSection((section,line)) => write!(f, "Unknown section {section} at line {line})"),
-			IoError(error) => write!(f, "{error:?})"),
-			MissingSection(section) => write!(f, "Missing section {section:?})"),
-		}
-	}
+	pub name: String,
 }
 
 impl LeverFile {
-	pub fn load<T: AsRef<Path>>(path: T) -> Result<Self,LeverFileError> {
+	pub fn load<T: AsRef<Path>>(path: T) -> Result<Self,()> {
+		//if directory is given use leverfile.ini as a default leverfile
+		let leverfile_path = if path.as_ref().is_dir() {
+			path.as_ref().join("leverfile.ini")
+		}else {
+			path.as_ref().to_path_buf()
+		};
 		//defaults
 		let mut url = None;
 		let mut name = String::new();
@@ -42,9 +29,12 @@ impl LeverFile {
 		let mut install_commands = vec![];
 		//load file
 		let mut leverfile = String::new();
-		let _ = match File::open(path.as_ref()){
+		let _ = match File::open(&leverfile_path){
 			Ok(file) => file,
-			Err(error) => return Err(LeverFileError::IoError(error))
+			Err(error) => {
+				eprintln!("Error opening file {:?}",leverfile_path);
+				return Err(());
+			}
 		}.read_to_string(&mut leverfile);
 		//====== read the leverfile line by line ======
 		let mut section_name = String::from("global");
@@ -74,13 +64,15 @@ impl LeverFile {
 					name = line.into();
 				}
 				_ => {
-					return Err(LeverFileError::UnknownSection((section_name,line_numer+1)))
+					eprintln!("Unknown leverfile section {section_name:?} at line {line}");
+					return Err(());
 				}
 			}
 		}
 		//check for required fields
 		if name.len() == 0 {
-			return Err(LeverFileError::MissingSection("name".into()))
+			eprintln!("Leverfile missing required section: \"name\"");
+			return Err(())
 		}
 		//pack struct
 		Ok(Self {
@@ -90,17 +82,23 @@ impl LeverFile {
 			name,
 		})
 	}
-	pub fn compile<T: AsRef<Path>>(&self, git_repo_path: T) -> io::Result<()>{
-		println!("=== Compiling {} ===",self.name);
-		run_commands(self.compile_commands.clone(),git_repo_path)?;
-		println!("Compiled {:?} without errors.",self.name);
-		Ok(())
+	pub fn compile<T: AsRef<Path>>(&self, git_repo_path: T) -> Result<(),()>{
+		match run_commands(self.compile_commands.clone(),git_repo_path) {
+			Ok(_) => Ok(()),
+			Err(e) => {
+				eprintln!("{e}");
+				Err(())
+			},
+		}
 	}
-	pub fn install<T: AsRef<Path>>(&self, git_repo_path: T) -> io::Result<()>{
-		println!("=== Installing {} ===",self.name);
-		run_commands(self.install_commands.clone(),git_repo_path)?;
-		println!("Installed {:?} without errors.",self.name);
-		Ok(())
+	pub fn install<T: AsRef<Path>>(&self, git_repo_path: T) -> Result<(),()>{
+		match run_commands(self.install_commands.clone(),git_repo_path) {
+			Ok(_) => Ok(()),
+			Err(e) => {
+				eprintln!("{e}");
+				Err(())
+			},
+		}
 	}
 }
 
