@@ -9,18 +9,18 @@ use std::process::exit;
 use std::fs::read_to_string;
 
 #[derive(Clone)]
-struct Config {
-	database_path: PathBuf
+pub struct Config {
+	pub database_path: PathBuf
 }
 
 impl Config {
-	fn new<P: AsRef<Path>>(config_path: Option<P>) -> Self {
+	pub fn new<P: AsRef<Path> + std::fmt::Debug + Clone>(config_path: Option<P>) -> Self {
 		//====== initialise defaults ======
 		let mut database_path = env::home_dir()
 			.map(|p| p.join(".config/lever/packages.ini"))
 			.unwrap_or(PathBuf::from("/etc/lever/packages.ini"));
 		//====== load the config file if it exists ======
-		let config_file_lines = config_path
+		let config_file_lines = config_path.clone()
 			.map(|p| read_to_string(p).ok()) //read the config file and ignore errors
 			.flatten()
 			.map(|s| s
@@ -29,13 +29,19 @@ impl Config {
 					Some(index) => x.chars().take(index).collect::<String>(), //remove comments
 					None => x.to_string(),
 				})
-				.filter(|x| x.len() != 0) //cut empty lines
 				.collect::<Vec<_>>() //wrap up into a nice Vec<String>
 			);
 		//====== read the config file if it exists ======
 		if let Some(lines) = config_file_lines {
-			for line in lines {
-				println!("{}",line);
+			for (line_number,line) in lines.into_iter().enumerate().filter(|(_,l)| l.len() != 0) {
+				let Some((key,value)) = line.split_once('=') else {
+					eprintln!("Malformed config in config file {:}:{}",config_path.as_ref().unwrap().as_ref().display(),line_number+1);
+					continue
+				};
+				match key.trim() {
+					"database_path" => {database_path = value.trim().into()},
+					_ => eprintln!("Unknown config option {:?} in {:}:{}",key,config_path.as_ref().unwrap().as_ref().display(),line_number+1)
+				}
 			}
 		}
 		//====== return the final config ======
@@ -70,9 +76,10 @@ fn main(){
 }
 
 fn compile(targets: Vec<String>, config: &Config) -> Result<(),()> {
-	let database = match LeverDB::load("lever.db") {
+	let database = match LeverDB::load(&config.database_path) {
 		Ok(db) => db,
 		Err(e) => {
+			eprintln!("Error loading lever database ({:?}):",&config.database_path);
 			eprintln!("{e:?}");
 			return Err(());
 		}
