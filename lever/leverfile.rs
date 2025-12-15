@@ -30,13 +30,13 @@ impl LeverFile {
 		let _ = match File::open(&leverfile_path){
 			Ok(file) => file,
 			Err(error) => {
-				eprintln!("Error opening file {:?}",leverfile_path);
+				eprintln!("Error opening file {:?}: {:?}",leverfile_path,error);
 				return Err(());
 			}
 		}.read_to_string(&mut leverfile);
 		//====== read the leverfile line by line ======
 		let mut section_name = String::from("global");
-		for (line_numer,raw_line) in leverfile.split('\n').into_iter().enumerate() {
+		for (_,raw_line) in leverfile.split('\n').into_iter().enumerate() {
 			//remove comments
 			let line = if let Some(index) = raw_line.find('#') {
 				raw_line[..index].to_string()
