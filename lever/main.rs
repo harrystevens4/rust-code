@@ -15,23 +15,30 @@ struct Config {
 
 impl Config {
 	fn new<P: AsRef<Path>>(config_path: Option<P>) -> Self {
+		//====== initialise defaults ======
 		let mut database_path = env::home_dir()
 			.map(|p| p.join(".config/lever/packages.ini"))
 			.unwrap_or(PathBuf::from("/etc/lever/packages.ini"));
+		//====== load the config file if it exists ======
 		let config_file_lines = config_path
 			.map(|p| read_to_string(p).ok()) //read the config file and ignore errors
 			.flatten()
 			.map(|s| s
 				.split('\n') //split file into lines
+				.map(|x| match x.find('#') {
+					Some(index) => x.chars().take(index).collect::<String>(), //remove comments
+					None => x.to_string(),
+				})
 				.filter(|x| x.len() != 0) //cut empty lines
-				.map(|x| x.to_string()) //gain ownership
 				.collect::<Vec<_>>() //wrap up into a nice Vec<String>
 			);
+		//====== read the config file if it exists ======
 		if let Some(lines) = config_file_lines {
 			for line in lines {
 				println!("{}",line);
 			}
 		}
+		//====== return the final config ======
 		Self {
 			database_path,
 		}
@@ -47,9 +54,9 @@ fn main(){
 		.collect::<Vec<_>>()[1..]
 		.to_owned();
 	let Ok(()) = (match command_line.iter().map(|s| s.as_str()).next() {
-		Some("compile") => compile(command_line[1..].into(),config),
-		Some("install") => install(command_line[1..].into(),config),
-		Some("update") => update(command_line[1..].into(),config),
+		Some("compile") => compile(command_line[1..].into(),&config),
+		Some("install") => install(command_line[1..].into(),&config),
+		Some("update") => update(command_line[1..].into(),&config),
 		Some("help") => Ok(help()),
 		Some(command) => {
 			eprintln!("Unknown command {command:?}");
@@ -62,7 +69,7 @@ fn main(){
 	}) else {exit(1)};
 }
 
-fn compile(targets: Vec<String>, config: Config) -> Result<(),()> {
+fn compile(targets: Vec<String>, config: &Config) -> Result<(),()> {
 	let database = match LeverDB::load("lever.db") {
 		Ok(db) => db,
 		Err(e) => {
@@ -88,17 +95,17 @@ fn compile(targets: Vec<String>, config: Config) -> Result<(),()> {
 	}
 	Ok(())
 }
-fn install(targets: Vec<String>, config: Config) -> Result<(),()> {
+fn install(targets: Vec<String>, config: &Config) -> Result<(),()> {
 	let leverfile = LeverFile::load("leverfile")?;
 	println!("=== Installing {} ===",leverfile.name);
 	leverfile.install(".")?;
 	println!("Installed {:?} without errors.",leverfile.name);
 	Ok(())
 }
-fn update(targets: Vec<String>, config: Config) -> Result<(),()> {
+fn update(targets: Vec<String>, config: &Config) -> Result<(),()> {
 	for target in targets {
-		compile(vec![target.clone()],config.clone())?;
-		install(vec![target.clone()],config.clone())?;
+		compile(vec![target.clone()],config)?;
+		install(vec![target.clone()],config)?;
 	}
 	Ok(())
 }
