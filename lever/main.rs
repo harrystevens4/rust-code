@@ -77,7 +77,7 @@ fn main(){
 }
 
 fn track(targets: Vec<String>, config: &Config) -> Result<(),()> {
-	let database = match LeverDB::load(&config.database_path) {
+	let mut database = match LeverDB::load(&config.database_path) {
 		Ok(db) => db,
 		Err(e) => {
 			eprintln!("Error loading lever database ({:?}):",&config.database_path);
@@ -86,13 +86,16 @@ fn track(targets: Vec<String>, config: &Config) -> Result<(),()> {
 		}
 	};
 	for file in targets {
-		if !file.is_reg() || !file.exists() {
+		if !Path::new(&file).is_file() || !Path::new(&file).exists() {
 			eprintln!("{:?} is not a valid leverfile",file);
 			continue;
 		}
-		LeverFile::load(file);
-		database.add_installed(file);
+		let _ = database.add_installed(file)?;
 	}
+	database.save().map_err(|e| {
+		eprintln!("Error saving database: {e:?}");
+		() //remove the Err content as we have already printed it
+	})
 }
 
 fn compile(targets: Vec<String>, config: &Config) -> Result<(),()> {
