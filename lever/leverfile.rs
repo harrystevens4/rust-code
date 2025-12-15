@@ -3,8 +3,6 @@ use std::process::{Stdio,Command};
 use std::io::Read;
 use std::fs::File;
 use std::io;
-use std::fmt::{Formatter,Display};
-use std::error::Error;
 
 #[derive(Debug)]
 pub struct LeverFile {
