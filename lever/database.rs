@@ -14,6 +14,8 @@ impl LeverDB {
 	pub fn load<T: AsRef<Path>>(path: T) -> io::Result<Self> {
 		//defaults
 		let mut installed_packages = vec![];
+		//create if it doesnt exist
+		if !path.as_ref().exists() {File::create(&path)?;}
 		//load file
 		let mut database = String::new();
 		let _ = File::open(&path)?.read_to_string(&mut database);
