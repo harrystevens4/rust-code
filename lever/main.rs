@@ -90,7 +90,7 @@ fn track(targets: Vec<String>, config: &Config) -> Result<(),()> {
 			eprintln!("{:?} is not a valid leverfile",file);
 			continue;
 		}
-		let _ = database.add_installed(file)?;
+		let _ = database.add_tracked(file).map_err(|e| eprintln!("Error tracking in database: {e:?}"))?;
 	}
 	database.save().map_err(|e| {
 		eprintln!("Error saving database: {e:?}");
@@ -109,7 +109,12 @@ fn compile(targets: Vec<String>, config: &Config) -> Result<(),()> {
 	};
 	if targets.len() == 0 {
 		//select all
-		for (name, location) in database.installed_packages {
+		for name in database.installed_packages() {
+			let Some(location) = database.get_package_location(&name)
+			else {
+				eprintln!("Package {name:?} not tracked but installed, skipping");
+				continue;
+			};
 			println!("=== Compiling {} ===",name);
 			let path = Path::new(&location);
 			let Ok(leverfile) = LeverFile::load(path) else {
