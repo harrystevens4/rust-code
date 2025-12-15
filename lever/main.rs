@@ -63,6 +63,7 @@ fn main(){
 		Some("compile") => compile(command_line[1..].into(),&config),
 		Some("install") => install(command_line[1..].into(),&config),
 		Some("update") => update(command_line[1..].into(),&config),
+		Some("track") => track(command_line[1..].into(),&config),
 		Some("help") => Ok(help()),
 		Some(command) => {
 			eprintln!("Unknown command {command:?}");
@@ -73,6 +74,25 @@ fn main(){
 			Err(())
 		},
 	}) else {exit(1)};
+}
+
+fn track(targets: Vec<String>, config: &Config) -> Result<(),()> {
+	let database = match LeverDB::load(&config.database_path) {
+		Ok(db) => db,
+		Err(e) => {
+			eprintln!("Error loading lever database ({:?}):",&config.database_path);
+			eprintln!("{e:?}");
+			return Err(());
+		}
+	};
+	for file in targets {
+		if !file.is_reg() || !file.exists() {
+			eprintln!("{:?} is not a valid leverfile",file);
+			continue;
+		}
+		LeverFile::load(file);
+		database.add_installed(file);
+	}
 }
 
 fn compile(targets: Vec<String>, config: &Config) -> Result<(),()> {
@@ -94,7 +114,7 @@ fn compile(targets: Vec<String>, config: &Config) -> Result<(),()> {
 				return Err(())
 			};
 			leverfile.compile(path)?;
-			println!("Compiled {:?} without errors.",name);
+			println!("Compiled {:?} without errors.\n",name);
 		}
 	}else{
 		let leverfile = LeverFile::load("leverfile")?;
@@ -106,7 +126,7 @@ fn install(targets: Vec<String>, config: &Config) -> Result<(),()> {
 	let leverfile = LeverFile::load("leverfile")?;
 	println!("=== Installing {} ===",leverfile.name);
 	leverfile.install(".")?;
-	println!("Installed {:?} without errors.",leverfile.name);
+	println!("Installed {:?} without errors.\n",leverfile.name);
 	Ok(())
 }
 fn update(targets: Vec<String>, config: &Config) -> Result<(),()> {
@@ -132,4 +152,6 @@ fn help(){
 	println!("Pass it the name of packages to install. Passing nothing will cause it to install all.");
 	println!("--> update");
 	println!("Pass it the name of packages to pull, compile then install. Passing nothing will cause it to act on all packages installed.");
+	println!("--> track");
+	println!("Pass it the path of a leverfile(s) to track");
 }
