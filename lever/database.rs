@@ -8,6 +8,7 @@ use std::io::Read;
 
 pub struct LeverDB {
 	pub installed_packages: Vec<String>, //(name,repo_location)
+	pub compiled_packages: Vec<String>, //(name,repo_location)
 	pub tracked_packages: Vec<(String,String)>, //(name,repo_location)
 	pub db_path: PathBuf,
 }
@@ -16,6 +17,7 @@ impl LeverDB {
 	pub fn load<T: AsRef<Path>>(path: T) -> io::Result<Self> {
 		//defaults
 		let mut installed_packages = vec![];
+		let mut compiled_packages = vec![];
 		let mut tracked_packages = vec![];
 		//create if it doesnt exist
 		if !path.as_ref().exists() {File::create(&path)?;}
@@ -37,6 +39,10 @@ impl LeverDB {
 					//simply the name of the packages
 					installed_packages.push(line.trim().to_string());
 				},
+				"copmiled" => {
+					//also just the name
+					compiled_packages.push(line.trim().to_string());
+				},
 				"tracked" => {
 					//split by the deliminator "=>"
 					let Ok([name,path]): Result<[&str;2],Vec<&str>> = line
@@ -52,6 +58,7 @@ impl LeverDB {
 		Ok(Self {
 			installed_packages,
 			tracked_packages,
+			compiled_packages,
 			db_path: path.as_ref().to_owned(),
 		})
 	}
@@ -61,6 +68,11 @@ impl LeverDB {
 		database_content.push(String::from("[tracked]"));
 		for (name,location) in &self.tracked_packages {
 			database_content.push(name.to_owned() + "=>" + &location);
+		}
+		//====== compiled packages ======
+		database_content.push(String::from("[compiled]"));
+		for name in &self.compiled_packages {
+			database_content.push(name.to_owned());
 		}
 		//====== installed packages ======
 		database_content.push(String::from("[installed]"));
@@ -78,6 +90,9 @@ impl LeverDB {
 			.into_iter()
 			.find(|(name,_)| name == name_query)
 			.map(|(_,location)| location)
+	}
+	pub fn compiled_packages(&self) -> Vec<String> {
+		self.compiled_packages.clone()
 	}
 	pub fn installed_packages(&self) -> Vec<String> {
 		self.installed_packages.clone()
@@ -99,6 +114,15 @@ impl LeverDB {
 				return Err(Error::other("package already installed"))
 		}
 		self.installed_packages.push(package_name.to_owned());
+		Ok(())
+	}
+	pub fn add_compiled(&mut self,package_name: &str) -> io::Result<()> {
+		if self.compiled_packages
+			.iter()
+			.any(|name| *name == package_name){
+				return Err(Error::other("package already compiled"))
+		}
+		self.compiled_packages.push(package_name.to_owned());
 		Ok(())
 	}
 }
