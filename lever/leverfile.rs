@@ -80,28 +80,17 @@ impl LeverFile {
 			name,
 		})
 	}
-	pub fn compile<T: AsRef<Path>>(&self, git_repo_path: T) -> Result<(),()>{
-		match run_commands(self.compile_commands.clone(),git_repo_path) {
-			Ok(_) => Ok(()),
-			Err(e) => {
-				eprintln!("{e}");
-				Err(())
-			},
-		}
+	pub fn compile<T: AsRef<Path>>(&self, git_repo_path: T) -> io::Result<()>{
+		run_commands(self.compile_commands.clone(),git_repo_path)
 	}
-	pub fn install<T: AsRef<Path>>(&self, git_repo_path: T) -> Result<(),()>{
-		match run_commands(self.install_commands.clone(),git_repo_path) {
-			Ok(_) => Ok(()),
-			Err(e) => {
-				eprintln!("{e}");
-				Err(())
-			},
-		}
+	pub fn install<T: AsRef<Path>>(&self, git_repo_path: T) -> io::Result<()>{
+		run_commands(self.install_commands.clone(),git_repo_path)
 	}
 }
 
 fn run_commands<T: AsRef<Path>>(commands: Vec<String>, execution_dir: T) -> io::Result<()>{
 	for command in commands {
+		println!("> {command}");
 		//start a shell to execute each line
 		let mut child = Command::new("sh")
 			.arg("-c")
@@ -111,7 +100,6 @@ fn run_commands<T: AsRef<Path>>(commands: Vec<String>, execution_dir: T) -> io::
 			.stdout(Stdio::piped())
 			.stdin(Stdio::null())
 			.spawn()?;
-		println!("> {command}");
 		//read and print stdout from shell
 		if let Some(ref mut stdout) = child.stdout {
 			let mut line_buffer = String::new();
