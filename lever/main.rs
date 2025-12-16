@@ -52,18 +52,29 @@ impl Config {
 }
 
 fn main(){
+	//====== load config ======
 	let config_path = env::home_dir()
 		.map(|p| p.join(".config/lever/lever.conf"))
 		.unwrap_or(PathBuf::from("/etc/lever/lever.conf"));
 	let config = Config::new(Some(config_path));
+	//====== load the database ======
+	let mut database = match LeverDB::load(&config.database_path) {
+		Ok(db) => db,
+		Err(e) => {
+			eprintln!("Error loading lever database ({:?}):",&config.database_path);
+			eprintln!("{e:?}");
+			exit(1)
+		}
+	};
+	//====== handle command line ======
 	let command_line = env::args()
 		.collect::<Vec<_>>()[1..]
 		.to_owned();
 	let Ok(_) = (match command_line.iter().map(|s| s.as_str()).next() {
-		Some("compile") => compile(command_line[1..].into(),&config),
-		Some("install") => install(command_line[1..].into(),&config),
-		Some("update") => update(command_line[1..].into(),&config),
-		Some("track") => track(command_line[1..].into(),&config),
+		Some("compile") => compile(command_line[1..].into(),&config,&mut database),
+		Some("install") => install(command_line[1..].into(),&config,&mut database),
+		Some("update") => update(command_line[1..].into(),&config,&mut database),
+		Some("track") => track(command_line[1..].into(),&config, &mut database),
 		Some("help") => Ok(help()),
 		Some(command) => {
 			eprintln!("Unknown command {command:?}");
@@ -76,15 +87,7 @@ fn main(){
 	}) else {exit(1)};
 }
 
-fn track(targets: Vec<String>, config: &Config) -> Result<(),()> {
-	let mut database = match LeverDB::load(&config.database_path) {
-		Ok(db) => db,
-		Err(e) => {
-			eprintln!("Error loading lever database ({:?}):",&config.database_path);
-			eprintln!("{e:?}");
-			return Err(());
-		}
-	};
+fn track(targets: Vec<String>, config: &Config, database: &mut LeverDB) -> Result<(),()> {
 	for file in targets {
 		if !Path::new(&file).is_file() || !Path::new(&file).exists() {
 			eprintln!("{:?} is not a valid leverfile",file);
@@ -98,16 +101,7 @@ fn track(targets: Vec<String>, config: &Config) -> Result<(),()> {
 	})
 }
 
-fn compile(targets: Vec<String>, config: &Config) -> Result<(),()> {
-	//====== load the package database ======
-	let database = match LeverDB::load(&config.database_path) {
-		Ok(db) => db,
-		Err(e) => {
-			eprintln!("Error loading lever database ({:?}):",&config.database_path);
-			eprintln!("{e:?}");
-			return Err(());
-		}
-	};
+fn compile(targets: Vec<String>, config: &Config, database: &mut LeverDB) -> Result<(),()> {
 	let compile_queue = if targets.len() == 0 {database.installed_packages()}
 		else {targets};
 	//====== compile all the selected packages ======
@@ -119,7 +113,7 @@ fn compile(targets: Vec<String>, config: &Config) -> Result<(),()> {
 			continue;
 		};
 		//load the leverfile
-		println!("=== Compiling {} ===",package);
+		println!("----> Compiling {}",package);
 		let Ok(leverfile) = LeverFile::load(&leverfile_path) else {
 			eprintln!("Loading leverfile at {leverfile_path:?} failed.");
 			return Err(())
@@ -138,20 +132,15 @@ fn compile(targets: Vec<String>, config: &Config) -> Result<(),()> {
 				return Err(());
 			}
 		};
-		println!("Compiled {:?} without errors.\n",package);
+		println!("----> Compiled {:?} without errors.\n",package);
+		//log that it has been compiled
+		if let Ok(_) = database.add_compiled(&package) {
+			let _ = database.save();
+		}
 	}
 	Ok(())
 }
-fn install(targets: Vec<String>, config: &Config) -> Result<(),()> {
-	//====== load the database ======
-	let mut database = match LeverDB::load(&config.database_path) {
-		Ok(db) => db,
-		Err(e) => {
-			eprintln!("Error loading lever database ({:?}):",&config.database_path);
-			eprintln!("{e:?}");
-			return Err(());
-		}
-	};
+fn install(targets: Vec<String>, config: &Config, database: &mut LeverDB) -> Result<(),()> {
 	//====== install all if no targets are provided ======
 	let mut install_queue = targets.clone();
 	if targets.len() == 0 {
@@ -166,7 +155,14 @@ fn install(targets: Vec<String>, config: &Config) -> Result<(),()> {
 			eprintln!("Could not find package {package:?}, skipping");
 			continue;
 		};
-		println!("=== Installing {} ===",package);
+		//compile if not already compiled
+		if let None = database.compiled_packages()
+			.into_iter()
+			.find(|name| *name == package){
+				println!("----> {package:?} Not already compiled, compiling.");
+				let _ = compile(vec![package.clone()],config,database)?;
+		}
+		println!("----> Installing {}",package);
 		//load the leverfile
 		let Ok(leverfile) = LeverFile::load(&leverfile_path) else {
 			eprintln!("Loading leverfile at {leverfile_path:?} failed.");
@@ -178,7 +174,7 @@ fn install(targets: Vec<String>, config: &Config) -> Result<(),()> {
 			eprintln!("Could not determine compile directory.");
 			return Err(());
 		};
-		//actualy compile
+		//actualy install
 		match leverfile.install(compile_dir) {
 			Ok(_) => (),
 			Err(e) => {
@@ -186,21 +182,19 @@ fn install(targets: Vec<String>, config: &Config) -> Result<(),()> {
 				return Err(());
 			}
 		};
-		println!("Installed {:?} without errors.\n",package);
+		println!("----> Installed {:?} without errors.\n",package);
 		//track that the package has now been installed
 		if let Ok(_) = database.add_installed(&package) {
 			let _ = database.save();
 		}
 	}
-	//TODO: add newly installed targets to installed section of db
-	//TODO: only install targets if specified
 	//TODO: handle git clone if path to leverfile provided
 	Ok(())
 }
-fn update(targets: Vec<String>, config: &Config) -> Result<(),()> {
+fn update(targets: Vec<String>, config: &Config, database: &mut LeverDB) -> Result<(),()> {
 	for target in targets {
-		compile(vec![target.clone()],config)?;
-		install(vec![target.clone()],config)?;
+		compile(vec![target.clone()],config,database)?;
+		install(vec![target.clone()],config,database)?;
 	}
 	Ok(())
 }
