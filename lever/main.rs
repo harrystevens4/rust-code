@@ -99,6 +99,7 @@ fn track(targets: Vec<String>, config: &Config) -> Result<(),()> {
 }
 
 fn compile(targets: Vec<String>, config: &Config) -> Result<(),()> {
+	//====== load the package database ======
 	let database = match LeverDB::load(&config.database_path) {
 		Ok(db) => db,
 		Err(e) => {
@@ -109,22 +110,27 @@ fn compile(targets: Vec<String>, config: &Config) -> Result<(),()> {
 	};
 	let compile_queue = if targets.len() == 0 {database.installed_packages()}
 		else {targets};
+	//====== compile all the selected packages ======
 	for package in compile_queue {
+		//get the path to the leverfile
 		let Some(leverfile_path) = database.get_package_location(&package)
 		else {
-			eprintln!("Package {package:?} not tracked but installed, skipping");
+			eprintln!("Could not find package {package:?}, skipping");
 			continue;
 		};
+		//load the leverfile
 		println!("=== Compiling {} ===",package);
 		let Ok(leverfile) = LeverFile::load(&leverfile_path) else {
 			eprintln!("Loading leverfile at {leverfile_path:?} failed.");
 			return Err(())
 		};
+		//determine the compile dir
 		let Some(compile_dir) = Path::new(&leverfile_path).parent()
 		else {
 			eprintln!("Could not determine compile directory.");
 			return Err(());
 		};
+		//actualy compile
 		match leverfile.compile(compile_dir) {
 			Ok(_) => (),
 			Err(e) => {
@@ -137,8 +143,56 @@ fn compile(targets: Vec<String>, config: &Config) -> Result<(),()> {
 	Ok(())
 }
 fn install(targets: Vec<String>, config: &Config) -> Result<(),()> {
+	//====== load the database ======
+	let mut database = match LeverDB::load(&config.database_path) {
+		Ok(db) => db,
+		Err(e) => {
+			eprintln!("Error loading lever database ({:?}):",&config.database_path);
+			eprintln!("{e:?}");
+			return Err(());
+		}
+	};
+	//====== install all if no targets are provided ======
+	let mut install_queue = targets.clone();
+	if targets.len() == 0 {
+		let mut all_installed_packages = database.installed_packages();
+		install_queue.append(&mut all_installed_packages);
+	}
+	//====== install selected packages ======
+	for package in install_queue {
+		//get the leverfile path
+		let Some(leverfile_path) = database.get_package_location(&package)
+		else {
+			eprintln!("Could not find package {package:?}, skipping");
+			continue;
+		};
+		println!("=== Installing {} ===",package);
+		//load the leverfile
+		let Ok(leverfile) = LeverFile::load(&leverfile_path) else {
+			eprintln!("Loading leverfile at {leverfile_path:?} failed.");
+			return Err(())
+		};
+		//determine the compile dir
+		let Some(compile_dir) = Path::new(&leverfile_path).parent()
+		else {
+			eprintln!("Could not determine compile directory.");
+			return Err(());
+		};
+		//actualy compile
+		match leverfile.install(compile_dir) {
+			Ok(_) => (),
+			Err(e) => {
+				eprintln!("Install error: {e:?}");
+				return Err(());
+			}
+		};
+		println!("Installed {:?} without errors.\n",package);
+		//track that the package has now been installed
+		if let Ok(_) = database.add_installed(&package) {
+			let _ = database.save();
+		}
+	}
 	//TODO: add newly installed targets to installed section of db
-	//TODO: install all if no targets specified
 	//TODO: only install targets if specified
 	//TODO: handle git clone if path to leverfile provided
 	Ok(())

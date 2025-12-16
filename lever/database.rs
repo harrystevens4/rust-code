@@ -92,4 +92,13 @@ impl LeverDB {
 		self.tracked_packages.push((leverfile.name,path.as_ref().display().to_string()));
 		Ok(())
 	}
+	pub fn add_installed(&mut self,package_name: &str) -> io::Result<()> {
+		if self.installed_packages
+			.iter()
+			.any(|name| *name == package_name){
+				return Err(Error::other("package already installed"))
+		}
+		self.installed_packages.push(package_name.to_owned());
+		Ok(())
+	}
 }
