@@ -6,6 +6,7 @@ use std::io;
 use std::path::{PathBuf,Path};
 use std::io::Read;
 
+#[derive(Debug)]
 pub struct LeverDB {
 	pub installed_packages: Vec<String>, //(name,repo_location)
 	pub compiled_packages: Vec<String>, //(name,repo_location)
@@ -39,7 +40,7 @@ impl LeverDB {
 					//simply the name of the packages
 					installed_packages.push(line.trim().to_string());
 				},
-				"copmiled" => {
+				"compiled" => {
 					//also just the name
 					compiled_packages.push(line.trim().to_string());
 				},
