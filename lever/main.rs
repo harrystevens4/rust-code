@@ -59,7 +59,7 @@ fn main(){
 	let command_line = env::args()
 		.collect::<Vec<_>>()[1..]
 		.to_owned();
-	let Ok(()) = (match command_line.iter().map(|s| s.as_str()).next() {
+	let Ok(_) = (match command_line.iter().map(|s| s.as_str()).next() {
 		Some("compile") => compile(command_line[1..].into(),&config),
 		Some("install") => install(command_line[1..].into(),&config),
 		Some("update") => update(command_line[1..].into(),&config),
@@ -107,34 +107,40 @@ fn compile(targets: Vec<String>, config: &Config) -> Result<(),()> {
 			return Err(());
 		}
 	};
-	if targets.len() == 0 {
-		//select all
-		for name in database.installed_packages() {
-			let Some(location) = database.get_package_location(&name)
-			else {
-				eprintln!("Package {name:?} not tracked but installed, skipping");
-				continue;
-			};
-			println!("=== Compiling {} ===",name);
-			let path = Path::new(&location);
-			let Ok(leverfile) = LeverFile::load(path) else {
-				eprintln!("Loading leverfile at {path:?} failed.");
-				return Err(())
-			};
-			leverfile.compile(path)?;
-			println!("Compiled {:?} without errors.\n",name);
-		}
-	}else{
-		let leverfile = LeverFile::load("leverfile")?;
-		leverfile.compile(".")?;
+	let compile_queue = if targets.len() == 0 {database.installed_packages()}
+		else {targets};
+	for package in compile_queue {
+		let Some(leverfile_path) = database.get_package_location(&package)
+		else {
+			eprintln!("Package {package:?} not tracked but installed, skipping");
+			continue;
+		};
+		println!("=== Compiling {} ===",package);
+		let Ok(leverfile) = LeverFile::load(&leverfile_path) else {
+			eprintln!("Loading leverfile at {leverfile_path:?} failed.");
+			return Err(())
+		};
+		let Some(compile_dir) = Path::new(&leverfile_path).parent()
+		else {
+			eprintln!("Could not determine compile directory.");
+			return Err(());
+		};
+		match leverfile.compile(compile_dir) {
+			Ok(_) => (),
+			Err(e) => {
+				eprintln!("Compilation error: {e:?}");
+				return Err(());
+			}
+		};
+		println!("Compiled {:?} without errors.\n",package);
 	}
 	Ok(())
 }
 fn install(targets: Vec<String>, config: &Config) -> Result<(),()> {
-	let leverfile = LeverFile::load("leverfile")?;
-	println!("=== Installing {} ===",leverfile.name);
-	leverfile.install(".")?;
-	println!("Installed {:?} without errors.\n",leverfile.name);
+	//TODO: add newly installed targets to installed section of db
+	//TODO: install all if no targets specified
+	//TODO: only install targets if specified
+	//TODO: handle git clone if path to leverfile provided
 	Ok(())
 }
 fn update(targets: Vec<String>, config: &Config) -> Result<(),()> {
@@ -153,11 +159,12 @@ fn help(){
 	println!("--> help");
 	println!("Shows this help text. takes no arguments");
 	println!("--> pull");
-	println!("Pass it the name of packages to update via git pull. Passing nothing will cause it to update all.");
+	println!("Pass it the name of packages to update via git pull. Passing nothing will cause it to update all installed packages.");
 	println!("--> compile");
-	println!("Pass it the name of packages to compile. Passing nothing will cause it to compile all.");
+	println!("Pass it the name of packages to compile. Passing nothing will cause it to compile all installed packages.");
 	println!("--> install");
-	println!("Pass it the name of packages to install. Passing nothing will cause it to install all.");
+	println!("Pass it the name of packages to install. Passing nothing will cause it to reinstall all already installed packages.");
+	println!("Passing a path to a leverfile will cause it to move it to the default folder, clone the repo, track it and then install it");
 	println!("--> update");
 	println!("Pass it the name of packages to pull, compile then install. Passing nothing will cause it to act on all packages installed.");
 	println!("--> track");
