@@ -1,0 +1,9 @@
+[package]
+name = "elf-embed-file"
+version = "0.1.0"
+edition = "2024"
+
+[dependencies]
+faerie = "0.16.0"
+target-lexicon = "0.11.2"
+args = {path = "../args"}
