@@ -11,6 +11,6 @@ int main(){
 	}
 	uint64_t data_length = *(uint64_t *)pointer;
 	char *data = pointer+sizeof(uint64_t);
-	printf("%*.s\n",(int)data_length,data);
+	printf("%.*s\n",(int)data_length,data);
 	return 0;
 }
