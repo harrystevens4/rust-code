@@ -27,7 +27,7 @@ int main(){
 ## How it works
 
 It creates an object file with a symbol in the `.rodata` section for the file and file size of each of the files provided on the command line. This can then be linked with a program and the symbols used directly using the `extern` keyword.
-The `<...>_size` symbol will always be a `uint64_t` and the file data symbol will always be the length of the size symbol provided. No null terminator is added. The endianness of all numbers is whatever the host's endianness is.
+The `<...>_size` symbol will always be a `uint64_t` and the file data symbol will always be the length of the size symbol provided. No null terminator is added. The endianness of the `<file>_size` symbol is whatever the host's endianness is.
 
 ## Symbol name conversion
 
