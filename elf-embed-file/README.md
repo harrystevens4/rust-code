@@ -19,7 +19,7 @@ int main(){
     char *data = _usr_share_dict_american_english;
     uint64_t data_length = _usr_share_dict_american_english_size;
     printf("%.*s\n",(int)data_length,data);
-    return 0;îA
+    return 0;
 }
 ```
 3. compile and link: `gcc -o example example.c dictionary.o`
