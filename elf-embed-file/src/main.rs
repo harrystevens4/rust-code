@@ -56,6 +56,7 @@ fn sanitise_symbol_name(name: String) -> String {
 		.replace("/","_") //replace these with '_'
 		.replace("-","_")
 		.replace(".","_")
+		.replace(" ","_")
 		.chars()
 		//delete any other non alphanumeric characters
 		.filter(|c| (c.is_alphanumeric() || *c == '_') && c.is_ascii())
