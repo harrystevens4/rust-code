@@ -102,14 +102,13 @@ impl LeverDB {
 	pub fn installed_packages(&self) -> Vec<String> {
 		self.installed_packages.clone()
 	}
-	pub fn add_tracked<P: AsRef<Path>>(&mut self,path: P) -> io::Result<()> {
-		let leverfile = LeverFile::load(&path).map_err(|_| Error::other("Could not load leverfile"))?;
+	pub fn add_tracked(&mut self, leverfile: &LeverFile) -> io::Result<()> {
 		if self.tracked_packages
 			.iter()
-			.any(|(name,_)| *name == leverfile.name){
-				return Err(Error::other("package already tracked"))
+			.any(|(name,_)| *name == leverfile.name()){
+				return Err(Error::other(format!("package \"{}\" already tracked",leverfile.name())))
 		}
-		self.tracked_packages.push((leverfile.name,path.as_ref().display().to_string()));
+		self.tracked_packages.push((leverfile.name().into(),leverfile.absolute_path().display().to_string()));
 		Ok(())
 	}
 	pub fn add_installed(&mut self,package_name: &str) -> io::Result<()> {
