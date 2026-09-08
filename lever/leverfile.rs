@@ -1,7 +1,8 @@
-use std::path::Path;
+use std::path::{PathBuf,Path};
 use std::process::{Stdio,Command};
 use std::io::Read;
 use std::fs::File;
+use std::fs;
 use std::io;
 
 #[derive(Debug)]
@@ -9,11 +10,31 @@ pub struct LeverFile {
 	url: Option<String>,
 	compile_commands: Vec<String>,
 	install_commands: Vec<String>,
+	dependencies: Vec<String>,
+	path: PathBuf,
 	pub name: String,
 }
 
+const LEVERFILE_TEMPLATE: &str = "\
+# Template leverfile
+
+[name]
+#example package name
+
+#uncomment to set url
+#[url]
+#this can be left blank
+
+[compile]
+#add compile commands here
+
+[dependencies]
+#add leverfile package names here as dependencies
+#example-package
+";
+
 impl LeverFile {
-	pub fn load<T: AsRef<Path>>(path: T) -> Result<Self,()> {
+	pub fn load<T: AsRef<Path>>(path: T) -> io::Result<Self> {
 		//if directory is given use leverfile.ini as a default leverfile
 		let leverfile_path = if path.as_ref().is_dir() {
 			path.as_ref().join("leverfile.ini")
@@ -25,15 +46,9 @@ impl LeverFile {
 		let mut name = String::new();
 		let mut compile_commands = vec![];
 		let mut install_commands = vec![];
+		let mut dependencies = vec![];
 		//load file
-		let mut leverfile = String::new();
-		let _ = match File::open(&leverfile_path){
-			Ok(file) => file,
-			Err(error) => {
-				eprintln!("Error opening file {:?}: {:?}",leverfile_path,error);
-				return Err(());
-			}
-		}.read_to_string(&mut leverfile);
+		let leverfile = fs::read_to_string(&leverfile_path)?;
 		//====== read the leverfile line by line ======
 		let mut section_name = String::from("global");
 		for (_,raw_line) in leverfile.split('\n').into_iter().enumerate() {
@@ -51,40 +66,48 @@ impl LeverFile {
 			match section_name.as_str() {
 				"url" => {
 					url = Some(line.into())
-				}
+				},
 				"install" => {
 					install_commands.push(line.into())
-				}
+				},
 				"compile" => {
 					compile_commands.push(line.into())
-				}
+				},
 				"name" => {
 					name = line.into();
+				},
+				"dependencies" => {
+					dependencies.push(line.into())
 				}
 				_ => {
-					eprintln!("Unknown leverfile section {section_name:?} at line {line}");
-					return Err(());
-				}
+					return Err(io::Error::other(format!("Unknown leverfile section {section_name:?} at line {line}")));
+				},
 			}
 		}
 		//check for required fields
 		if name.len() == 0 {
-			eprintln!("Leverfile missing required section: \"name\"");
-			return Err(())
+			return Err(io::Error::other("Leverfile missing required section: \"name\""));
 		}
 		//pack struct
 		Ok(Self {
 			url,
 			compile_commands,
 			install_commands,
+			dependencies,
 			name,
+			path: leverfile_path,
 		})
 	}
+	//TODO we could definitely save path so we dont have to pass git_repo_path
 	pub fn compile<T: AsRef<Path>>(&self, git_repo_path: T) -> io::Result<()>{
 		run_commands(self.compile_commands.clone(),git_repo_path)
 	}
 	pub fn install<T: AsRef<Path>>(&self, git_repo_path: T) -> io::Result<()>{
 		run_commands(self.install_commands.clone(),git_repo_path)
+	}
+	pub fn dependencies(&self) -> Vec<String> {self.dependencies.clone()}
+	pub fn write_template(path: impl AsRef<Path>) -> io::Result<()> {
+		fs::write(path,LEVERFILE_TEMPLATE)
 	}
 }
 
