@@ -13,6 +13,10 @@ pub struct LeverDB {
 	pub tracked_packages: Vec<(String,String)>, //(name,repo_location)
 	pub db_path: PathBuf,
 }
+pub struct PackageTreeNode {
+	dependencies: Vec<PackageTreeNode>,
+	name: String,
+}
 
 impl LeverDB {
 	pub fn load<T: AsRef<Path>>(path: T) -> io::Result<Self> {
@@ -125,5 +129,41 @@ impl LeverDB {
 		}
 		self.compiled_packages.push(package_name.to_owned());
 		Ok(())
+	}
+	pub fn get_package_leverfile(&self, name: impl AsRef<str>) -> io::Result<LeverFile> {
+		let name = name.as_ref();
+		let Some(leverfile_path) = self.get_package_location(name)
+		else {
+			return Err(io::Error::other("Package \"{name}\" not known to lever"));
+		};
+		LeverFile::load(&leverfile_path)
+	}
+	pub fn generate_package_dependency_tree(&self, name: impl AsRef<str>) -> io::Result<PackageTreeNode>{
+		let name = name.as_ref();
+		let leverfile = self.get_package_leverfile(name)?;
+		let mut dependency_nodes = vec![];
+		for package in leverfile.dependencies(){
+			//recursion gaming
+			dependency_nodes.push(self.generate_package_dependency_tree(&package)?);
+		}
+		Ok(PackageTreeNode {
+			name: name.to_string(),
+			dependencies: dependency_nodes,
+		})
+	}
+}
+
+impl PackageTreeNode {
+	pub fn flatten(&self) -> Vec<String> {
+		//flatten to just pattern names
+		if self.dependencies.len() == 0 {
+			vec![self.name.clone()]
+		}else {
+			let mut result = vec![];
+			for dependency in &self.dependencies {
+				result.append(&mut dependency.flatten())
+			}
+			result
+		}
 	}
 }
