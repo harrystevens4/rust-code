@@ -1,4 +1,5 @@
 use std::path::{PathBuf,Path};
+use std::path;
 use std::process::{Stdio,Command};
 use std::io::Read;
 use std::fs::File;
@@ -11,10 +12,11 @@ pub struct LeverFile {
 	compile_commands: Vec<String>,
 	install_commands: Vec<String>,
 	dependencies: Vec<String>,
-	path: PathBuf,
-	pub name: String,
+	absolute_path: PathBuf,
+	name: String,
 }
 
+pub const LEVERFILE_DEFAULT_NAME: &str = "leverfile.ini";
 const LEVERFILE_TEMPLATE: &str = "\
 # Template leverfile
 
@@ -95,7 +97,7 @@ impl LeverFile {
 			install_commands,
 			dependencies,
 			name,
-			path: leverfile_path,
+			absolute_path: path::absolute(leverfile_path)?,
 		})
 	}
 	//TODO we could definitely save path so we dont have to pass git_repo_path
@@ -105,9 +107,17 @@ impl LeverFile {
 	pub fn install<T: AsRef<Path>>(&self, git_repo_path: T) -> io::Result<()>{
 		run_commands(self.install_commands.clone(),git_repo_path)
 	}
-	pub fn dependencies(&self) -> Vec<String> {self.dependencies.clone()}
+	pub fn dependencies(&self) -> Vec<String> {
+		self.dependencies.clone()
+	}
 	pub fn write_template(path: impl AsRef<Path>) -> io::Result<()> {
 		fs::write(path,LEVERFILE_TEMPLATE)
+	}
+	pub fn absolute_path(&self) -> &Path {
+		&self.absolute_path
+	}
+	pub fn name(&self) -> &str {
+		&self.name
 	}
 }
 
