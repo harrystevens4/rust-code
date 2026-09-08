@@ -2,7 +2,7 @@ mod leverfile;
 mod database;
 
 use std::process::Command;
-use leverfile::{LeverFile};
+use leverfile::{LeverFile,LEVERFILE_DEFAULT_NAME};
 use std::path::{Path,PathBuf};
 use database::LeverDB;
 use std::env;
@@ -100,6 +100,7 @@ fn main(){
 		Some("install") => install(command_line[1..].into(),&config,&mut database),
 		Some("update") => update(command_line[1..].into(),&config,&mut database),
 		Some("track") => track(command_line[1..].into(),&config, &mut database),
+		Some("untrack") => untrack(command_line[1..].into(),&config, &mut database),
 		Some("create") => create(command_line[1..].into(),&config,&mut database),
 		Some("help") => Ok(help()),
 		Some(command) => {
@@ -113,10 +114,34 @@ fn main(){
 	}) else {exit(1)};
 }
 
+fn untrack(targets: Vec<String>, config: &Config, database: &mut LeverDB) -> Result<(),()> {
+	//load current directory package if none provided
+	let packages = if targets.len() == 0 {
+		let leverfile = match LeverFile::load(LEVERFILE_DEFAULT_NAME){
+			Ok(leverfile) => leverfile,
+			Err(e) => {
+				eprintln!("Error loading leverfile in current directory: {e}");
+				return Err(());
+			}
+		};
+		vec![leverfile.name().to_string()]
+	}else {targets.clone()};
+	//untrack each package
+	for package in packages {
+		if let Err(e) = database.remove_tracked(&package){
+			eprintln!("Error removing \"{}\" from tracked list: {e}",package);
+		}
+	}
+	if let Err(e) = database.save(){
+		eprintln!("Error saving database: {e}");
+		return Err(());
+	}
+	Ok(())
+}
 fn track(targets: Vec<String>, config: &Config, database: &mut LeverDB) -> Result<(),()> {
 	//no args provided means track leverfile in current dir
 	let targets = if targets.len() == 0 {
-		vec![String::from("leverfile.ini")]
+		vec![String::from(LEVERFILE_DEFAULT_NAME)]
 	}else {targets};
 	//track all the files
 	for file in targets {
@@ -302,6 +327,8 @@ fn help(){
 	println!("Pass it the name of packages to pull, compile then install. Passing nothing will cause it to act on all packages installed.");
 	println!("--> track");
 	println!("Pass it the path of a leverfile(s) to track");
+	println!("--> untrack");
+	println!("removes all references for the provided packages from the database");
 	println!("--> create");
 	println!("Creates a leverfile in the current directory, and opens it in an editor for you to fill in")
 }

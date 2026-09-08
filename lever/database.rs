@@ -111,6 +111,16 @@ impl LeverDB {
 		self.tracked_packages.push((leverfile.name().into(),leverfile.absolute_path().display().to_string()));
 		Ok(())
 	}
+	pub fn remove_tracked(&mut self, package_name: &str) -> io::Result<()> {
+		let old_package_count = self.tracked_packages.len();
+		self.tracked_packages = self.tracked_packages
+			.clone()
+			.into_iter()
+			.filter(|(name,_)| name != package_name)
+			.collect();
+		if self.tracked_packages.len() != old_package_count {Ok(())}
+		else {Err(io::Error::other(format!("Package \"{}\" not found in database",package_name)))}
+	}
 	pub fn add_installed(&mut self,package_name: &str) -> io::Result<()> {
 		if self.installed_packages
 			.iter()
