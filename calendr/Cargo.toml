@@ -4,5 +4,7 @@ version = "0.1.0"
 edition = "2024"
 
 [dependencies]
+chrono = "0.4.45"
 ratatui = "0.30.2"
 reqwest = { version = "0.13.5", features = ["blocking"] }
+uuid = { version = "1.26.1", features = ["v4"] }
