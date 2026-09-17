@@ -20,7 +20,7 @@ use std::default::Default;
 use chrono::{Local,NaiveDate,Datelike,Days,Months};
 
 static STYLE_SELECTED_TEXT: Style = Style::new().on_red();
-static DATE_FORMAT_STRING: &str = "%d/%m/%Y";
+static DATE_FORMAT_STRING: &str = "%a - %d/%m/%Y";
 
 struct Application {
 	exit: bool,
@@ -29,6 +29,7 @@ struct Application {
 	current_day_list_state: ListState,
 	selected_date: NaiveDate,
 	calendar_scroll_offset: usize, //how far to the right the selected day is
+	calendar: CombinedCalendar,
 }
 enum DaysOrMonths {
 	Days(Days),
@@ -62,12 +63,18 @@ fn main() -> Result<(),()>{
 		}
 	};
 	println!("loading calendars...");
-	let calendar = CombinedCalendar::load_from_strings(vec![
+	let calendar = match CombinedCalendar::load_from_strings(vec![
 		("calendar1",&calendar_raw)
-	]);
+	]){
+		Ok(c) => c,
+		Err(e) => {
+			eprintln!("Error loading calendar: {e}");
+			return Err(());
+		}
+	};
 	//println!("{calendar:#?}");
 	//====== ratatui ======
-	let mut application = Application::default();
+	let mut application = Application::new(calendar);
 	if let Err(e) = ratatui::run(move |terminal| application.tui_loop(terminal)){
 		eprintln!("Error in tui loop: {e}");
 		return Err(());
@@ -75,8 +82,8 @@ fn main() -> Result<(),()>{
 	Ok(())
 }
 
-impl Default for Application {
-	fn default() -> Application {
+impl Application {
+	pub fn new(calendar: CombinedCalendar) -> Application {
 		let application = Application {
 			exit: false,
 			selected_window: 0, //date
@@ -84,11 +91,10 @@ impl Default for Application {
 			current_day_list_state: ListState::default().with_selected(Some(0)),
 			selected_date: Local::now().date_naive(),
 			calendar_scroll_offset: 0,
+			calendar: calendar
 		};
 		application
 	}
-}
-impl Application {
 	pub fn tui_loop(&mut self, terminal: &mut DefaultTerminal) -> Result<(),Box<dyn Error>>{
 		while self.exit == false {
 			terminal.draw(|frame| self.draw(frame))?;
@@ -107,6 +113,8 @@ impl Application {
 					KeyCode::Char('=') => self.increase_calendar_view_size(1),
 					KeyCode::Char('-') => self.decrease_calendar_view_size(1),
 					KeyCode::Char('n') => self.set_selected_date(Local::now()),
+					KeyCode::Down => self.select_next_event(),
+					KeyCode::Up => self.select_prev_event(),
 					KeyCode::Right => 
 						if self.selected_window == 0 {self.increase_selected_date_by(Days::new(1))}
 						else if self.selected_window == 1 {self.scroll_calendar_right()}
@@ -121,19 +129,29 @@ impl Application {
 		}
 		Ok(())
 	}
+	fn select_next_event(&mut self){
+		self.current_day_list_state.select_next();
+		//ensure it is in bounds
+		let date = self.selected_date;
+		let events = self.calendar.get_events_for_date(date);
+		if self.current_day_list_state.selected() >= Some(events.len()){
+			self.current_day_list_state.select(Some(events.len()-1));
+		}
+	}
+	fn select_prev_event(&mut self){
+		self.current_day_list_state.select_previous();
+	}
 	fn scroll_calendar_right(&mut self){
 		if self.calendar_scroll_offset < self.calendar_view_size-1 {
 			self.calendar_scroll_offset += 1;
-		}else {
-			self.increase_selected_date_by(Days::new(1));
 		}
+		self.increase_selected_date_by(Days::new(1));
 	}
 	fn scroll_calendar_left(&mut self){
 		if self.calendar_scroll_offset > 0 {
 			self.calendar_scroll_offset -= 1;
-		}else {
-			self.decrease_selected_date_by(Days::new(1));
 		}
+		self.decrease_selected_date_by(Days::new(1));
 	}
 	fn set_selected_date(&mut self, new_date: impl Datelike){
 		self.selected_date = NaiveDate::from_ymd(
@@ -141,6 +159,7 @@ impl Application {
 			new_date.month(),
 			new_date.day()
 		);
+		self.current_day_list_state = ListState::default().with_selected(Some(0));
 	}
 	fn increase_calendar_view_size(&mut self, amount: usize){
 		self.set_calendar_view_size(self.calendar_view_size+1)
@@ -155,19 +174,19 @@ impl Application {
 		//make sure the selected date is still visible
 		self.calendar_scroll_offset = min(
 			self.calendar_scroll_offset as isize,
-			1-(new_size) as isize
+			(new_size-1) as isize
 		) as usize;
 	}
 	fn increase_selected_date_by(&mut self, time: impl Into<DaysOrMonths>){
 		match time.into() {
-			DaysOrMonths::Days(days) => self.selected_date = self.selected_date + days,
-			DaysOrMonths::Months(months) => self.selected_date = self.selected_date + months,
+			DaysOrMonths::Days(days) => self.set_selected_date(self.selected_date + days),
+			DaysOrMonths::Months(months) => self.set_selected_date(self.selected_date + months),
 		}
 	}
 	fn decrease_selected_date_by(&mut self, time: impl Into<DaysOrMonths>){
 		match time.into() {
-			DaysOrMonths::Days(days) => self.selected_date = self.selected_date - days,
-			DaysOrMonths::Months(months) => self.selected_date = self.selected_date - months,
+			DaysOrMonths::Days(days) => self.set_selected_date(self.selected_date - days),
+			DaysOrMonths::Months(months) => self.set_selected_date(self.selected_date - months),
 		}
 	}
 	fn draw(&mut self, frame: &mut Frame){
@@ -246,19 +265,29 @@ impl Widget for &mut Application {
 			.constraints(vec![Constraint::Fill(1); self.calendar_view_size])
 			.split(calendar_display_block_rect);
 		for i in 0..(self.calendar_view_size){
+			//the current day we are on in this iteration
+			let this_day_selected = (i == self.calendar_scroll_offset);
+			//the date for the current day we are rendering
+			let date = self.selected_date - Days::new(self.calendar_scroll_offset as u64) + Days::new(i as u64);
 			//seperates individual days
 			let day_block = Block::new()
 				.borders(Borders::LEFT)
-				.title_top(Line::from(
-					(self.selected_date + Days::new(i as u64))
-					.format(DATE_FORMAT_STRING)
-					.to_string()
-				).centered());
-			let item_list = List::new(["test event 1","test event 2","test event 3"])
+				.title_top(Line::from(date.format(DATE_FORMAT_STRING).to_string())
+					.centered()
+					.style(if this_day_selected {STYLE_SELECTED_TEXT} else {Style::default()})
+				);
+			//grab our events
+			let events = self.calendar
+				.get_events_for_date(date);
+			let event_titles: Vec<_> = events
+				.iter()
+				.map(|e| e.title())
+				.collect();
+			let item_list = List::new(event_titles)
 				.block(day_block)
 				.highlight_style(STYLE_SELECTED_TEXT);
 			//only the selected date gets the selected ListState
-			let mut list_state = if i == self.calendar_scroll_offset {
+			let mut list_state = if this_day_selected {
 				self.current_day_list_state
 			}else {
 				ListState::default()
