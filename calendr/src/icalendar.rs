@@ -2,7 +2,7 @@ use std::io;
 use std::iter::Peekable;
 use std::collections::HashMap;
 use std::time::{SystemTime,Duration};
-use chrono::{DateTime,Utc,Datelike,Local};
+use chrono::{DateTime,Utc,Datelike,Local,NaiveDate,TimeZone};
 use uuid::Uuid;
 
 #[derive(Debug,PartialEq)]
@@ -31,8 +31,8 @@ struct ICComponent {
 pub struct CalendarEvent {
 	parent_calendar_name: String,
 	title: String,
-	start_time: DateTime<Local>,
-	end_time: DateTime<Local>,
+	start_time: Option<DateTime<Local>>,
+	end_time: Option<DateTime<Local>>,
 	uuid: String,
 	description: String,
 }
@@ -68,10 +68,41 @@ impl From<&str> for ICComponentType {
 	}
 }
 
-fn iso_to_local_time(iso_time: &str) -> DateTime<Local> {
-	DateTime::parse_from_rfc3339(iso_time)
-		.unwrap_or(DateTime::<Utc>::from(SystemTime::now()).into())
-		.into()
+fn iso_to_local_time(iso_time: &str) -> Option<DateTime<Local>> {
+	//====== process timestamp ======
+	let mut timestamp = iso_time
+		.replace("-","")
+		.replace(":","");
+	timestamp.make_ascii_uppercase();
+	let mut date_string = String::new();
+	let mut time_string = None;
+	let mut timezone_string = None;
+	if let Some((date,time)) = timestamp.split_once("T"){
+		date_string = date.to_string();
+		if let Some((split_time,split_timezone)) = time.split_once("Z"){
+			time_string = Some(split_time);
+			timezone_string = Some(split_timezone);
+		}else {
+			time_string = Some(time);
+		}
+	}else {
+		date_string = timestamp;
+	}
+	//====== calculate systemtime offset ======
+	let year =   date_string[0..4].parse().unwrap_or(0);
+	let month =  date_string[4..6].parse().unwrap_or(0);
+	let day =    date_string[6..8].parse().unwrap_or(0);
+	let mut hour = 0;
+	let mut minute = 0;
+	let mut second = 0;
+	if let Some(time_string) = time_string {
+		hour =   time_string[0..2].parse().unwrap_or(0);
+		minute = time_string[2..4].parse().unwrap_or(0);
+		second = time_string[4..6].parse().unwrap_or(0);
+	}
+	//0 is actualy 1 BCE?????
+	let datetime = Local.with_ymd_and_hms(year,month,day,hour,minute,second);
+	return datetime.earliest();
 }
 fn get_date_hash(date: impl Datelike) -> usize {
 	let year = date.year() as usize;
@@ -172,12 +203,12 @@ impl ICalendar {
 				.with_start_time(properties
 					.get("DTSTART")
 					.map(|t| iso_to_local_time(t))
-					.unwrap_or(Local::now())
+					.flatten()
 				)
 				.with_end_time(properties
 					.get("DTEND")
 					.map(|t| iso_to_local_time(t))
-					.unwrap_or(Local::now())
+					.flatten()
 				)
 				.with_uuid(&properties
 					.get("UID")
@@ -188,7 +219,6 @@ impl ICalendar {
 		}
 		events
 	}
-
 }
 
 impl CombinedCalendar {
@@ -232,25 +262,31 @@ impl CalendarEvent {
 			parent_calendar_name: calendar.name(),
 			title: String::new(),
 			description: String::new(),
-			start_time: Local::now(),
-			end_time: Local::now(),
+			start_time: None,
+			end_time: None,
 			uuid: Uuid::new_v4().simple().to_string(),
 		}.with_duration(Duration::from_hours(1))
 	}
 	pub fn get_date_hash(&self) -> usize {
-		get_date_hash(self.start_time)
+		if let Some(start_time) = self.start_time {
+			get_date_hash(start_time)
+		}else {
+			0
+		}
 	}
-	pub fn with_start_time(mut self, time: DateTime<Local>) -> CalendarEvent {
+	pub fn with_start_time(mut self, time: Option<DateTime<Local>>) -> CalendarEvent {
 		self.start_time = time;
 		self
 	}
-	pub fn with_end_time(mut self, time: DateTime<Local>) -> CalendarEvent {
+	pub fn with_end_time(mut self, time: Option<DateTime<Local>>) -> CalendarEvent {
 		self.end_time = time;
 		self
 	}
 	//essentialy add_end_time but does the maths for you
 	pub fn with_duration(mut self, duration: Duration) -> CalendarEvent {
-		self.end_time = self.start_time + duration;
+		let Some(start_time) = self.start_time
+		else {return self};
+		self.end_time = Some(start_time + duration);
 		self
 	}
 	pub fn with_title(mut self, title: &str) -> CalendarEvent {
@@ -264,5 +300,8 @@ impl CalendarEvent {
 	pub fn with_description(mut self, description: &str) -> CalendarEvent {
 		self.description = description.to_string();
 		self
+	}
+	pub fn title(&self) -> String {
+		self.title.clone()
 	}
 }
