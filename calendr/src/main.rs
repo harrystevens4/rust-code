@@ -1,6 +1,7 @@
 mod icalendar;
 use std::env;
 use std::io;
+use std::ops::Sub;
 use std::error::Error;
 use std::cmp::{min,max};
 use icalendar::CombinedCalendar;
@@ -17,14 +18,14 @@ use ratatui::{
 	symbols::{border},
 };
 use std::default::Default;
-use chrono::{Local,NaiveDate,Datelike,Days,Months};
+use chrono::{Local,NaiveDate,Datelike,Days,Months,TimeDelta};
 
 static STYLE_SELECTED_TEXT: Style = Style::new().on_red();
 static DATE_FORMAT_STRING: &str = "%a - %d/%m/%Y";
 
 struct Application {
 	exit: bool,
-	selected_window: usize,
+	selected_window: SelectedWindow, //0 for calendar 1 for event info
 	calendar_view_size: usize, //1 - 1 day, 7 - week
 	current_day_list_state: ListState,
 	selected_date: NaiveDate,
@@ -35,7 +36,71 @@ enum DaysOrMonths {
 	Days(Days),
 	Months(Months),
 }
+#[derive(PartialEq)]
+enum SelectedWindow {
+	CalendarDisplay,
+	EventInfo,
+}
 
+//lowk did not need to be a trait but i wanted to try out making my own
+trait DateOffsetString<U: Datelike + Copy>: Datelike + Copy {
+	fn string_offset(self, other: U) -> String
+	where Self: Sub<U, Output = TimeDelta> {
+		let diff = -(self - other);
+		match diff.num_days() {
+			..=-2 => {
+				if diff.num_weeks() == 0 && other.weekday().num_days_from_monday() < self.weekday().num_days_from_monday(){
+					String::from("This Week")
+				}else if diff.num_weeks() == -1 && other.weekday().num_days_from_monday() <= self.weekday().num_days_from_monday(){
+					String::from("Last Week")
+				}else if diff.num_weeks() == 0 && other.weekday().num_days_from_monday() > self.weekday().num_days_from_monday(){
+					String::from("Last Week")
+				}else if other.month() == self.month() && other.year() == self.year(){
+					String::from("This Month")
+				}else if other.month()+1 == self.month() && other.year() == self.year(){
+					String::from("Last Month")
+				}else if other.year() == self.year(){
+					String::from("This Year")
+				}else if other.year()+1 == self.year() {
+					String::from("Last Year")
+				}else {
+					format!("{} Years ago",self.year() - other.year())
+				}
+			},
+			-1 => String::from("Yesterday"),
+			0 => String::from("Today"),
+			1 => String::from("Tomorrow"),
+			2.. => {
+				if diff.num_weeks() == 0 && other.weekday().num_days_from_monday() < self.weekday().num_days_from_monday(){
+					String::from("Next Week")
+				}else if diff.num_weeks() == 0 {
+					String::from("This Week")
+				}else if diff.num_weeks() == 1 && other.weekday().num_days_from_monday() >= self.weekday().num_days_from_monday(){
+					String::from("Next Week")
+				}else if other.month() == self.month() && other.year() == self.year(){
+					String::from("This Month")
+				}else if other.year() == self.year(){
+					String::from("This Year")
+				}else if other.year() == self.year()+1 {
+					String::from("Next Year")
+				}else {
+					format!("{} Years away",other.year() - self.year())
+				}
+			}
+		}
+	}
+}
+
+impl<T: Datelike + Copy> DateOffsetString<T> for NaiveDate {}
+impl SelectedWindow {
+	pub fn next(&mut self){
+		use SelectedWindow::*;
+		*self = match self {
+			CalendarDisplay => EventInfo,
+			EventInfo => CalendarDisplay,
+		}
+	}
+}
 impl From<Days> for DaysOrMonths {
 	fn from(days: Days) -> DaysOrMonths {
 		DaysOrMonths::Days(days)
@@ -86,7 +151,7 @@ impl Application {
 	pub fn new(calendar: CombinedCalendar) -> Application {
 		let application = Application {
 			exit: false,
-			selected_window: 0, //date
+			selected_window: SelectedWindow::CalendarDisplay,
 			calendar_view_size: 3,
 			current_day_list_state: ListState::default().with_selected(Some(0)),
 			selected_date: Local::now().date_naive(),
@@ -113,15 +178,13 @@ impl Application {
 					KeyCode::Char('=') => self.increase_calendar_view_size(1),
 					KeyCode::Char('-') => self.decrease_calendar_view_size(1),
 					KeyCode::Char('n') => self.set_selected_date(Local::now()),
+					KeyCode::Char('[') => self.decrease_selected_date_by(Months::new(1)),
+					KeyCode::Char(']') => self.increase_selected_date_by(Months::new(1)),
 					KeyCode::Down => self.select_next_event(),
 					KeyCode::Up => self.select_prev_event(),
-					KeyCode::Right => 
-						if self.selected_window == 0 {self.increase_selected_date_by(Days::new(1))}
-						else if self.selected_window == 1 {self.scroll_calendar_right()}
-					KeyCode::Left => 
-						if self.selected_window == 0 {self.decrease_selected_date_by(Days::new(1))}
-						else if self.selected_window == 1 {self.scroll_calendar_left()}
-					KeyCode::Tab => self.selected_window = (self.selected_window + 1) % 2,
+					KeyCode::Right => self.scroll_calendar_right(),
+					KeyCode::Left => self.scroll_calendar_left(),
+					KeyCode::Tab => self.selected_window.next(),
 					_ => (),
 				}
 			},
@@ -212,19 +275,15 @@ impl Widget for &mut Application {
 		);
 		//====== date selector ======
 		let date_selector_block = Block::bordered()
-			.title(Line::styled(" Date ",
-				if self.selected_window == 0 {STYLE_SELECTED_TEXT}
-				else {Style::new()}
-			).centered())
+			.title(Line::from(" Date ").centered())
 			.title_bottom(Line::from(" n to switch to today ").centered())
 			.border_set(border::THICK);
 		let date_selector_block_rect = date_selector_block.inner(top_rect);
 		date_selector_block.render(top_rect,buf);
 		//text layout in block
-		let [view_type,relative_day,date_selected,weekday] = date_selector_block_rect.layout(&Layout::default()
+		let [view_type,date_selected,relative_day] = date_selector_block_rect.layout(&Layout::default()
 			.direction(Direction::Horizontal)
 			.constraints(vec![
-				Constraint::Fill(1),
 				Constraint::Fill(1),
 				Constraint::Fill(1),
 				Constraint::Fill(1),
@@ -234,18 +293,18 @@ impl Widget for &mut Application {
 		Line::from("Month View")
 			.centered()
 			.render(view_type,buf);
-		Line::from("Today")
-			.centered()
-			.render(relative_day,buf);
 		Line::from(self.selected_date.format(DATE_FORMAT_STRING).to_string())
 			.centered()
 			.render(date_selected,buf);
-		Line::from("Monday")
+		Line::from(Local::now().date_naive().string_offset(self.selected_date))
 			.centered()
-			.render(weekday,buf);
+			.render(relative_day,buf);
 		//====== event info ======
 		Block::bordered()
-			.title(Line::from(" Event Info ").centered())
+			.title(Line::styled(" Event Info ",
+				if self.selected_window == SelectedWindow::EventInfo {STYLE_SELECTED_TEXT}
+				else {Style::new()}
+			).centered())
 			.border_set(border::THICK)
 			.render(event_info_rect,buf);
 		//====== calendar display ======
@@ -253,7 +312,7 @@ impl Widget for &mut Application {
 		let calendar_display_block = Block::bordered()
 			.title_bottom(Line::from(" =/- to change view ").centered())
 			.title(Line::styled(" Calendar ",
-				if self.selected_window == 1 {STYLE_SELECTED_TEXT}
+				if self.selected_window == SelectedWindow::CalendarDisplay {STYLE_SELECTED_TEXT}
 				else {Style::new()}
 			).centered())
 			.border_set(border::THICK);
@@ -266,7 +325,7 @@ impl Widget for &mut Application {
 			.split(calendar_display_block_rect);
 		for i in 0..(self.calendar_view_size){
 			//the current day we are on in this iteration
-			let this_day_selected = (i == self.calendar_scroll_offset);
+			let this_day_selected = i == self.calendar_scroll_offset;
 			//the date for the current day we are rendering
 			let date = self.selected_date - Days::new(self.calendar_scroll_offset as u64) + Days::new(i as u64);
 			//seperates individual days
