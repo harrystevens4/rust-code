@@ -22,6 +22,7 @@ use chrono::{Local,NaiveDate,Datelike,Days,Months,TimeDelta};
 
 static STYLE_SELECTED_TEXT: Style = Style::new().on_red();
 static DATE_FORMAT_STRING: &str = "%a - %d/%m/%Y";
+static TIME_FORMAT_STRING: &str = "%H:%M";
 
 struct Application {
 	exit: bool,
@@ -327,7 +328,15 @@ impl Widget for &mut Application {
 				Some(Line::from(selected_event.title()).centered()),
 				Some(Line::from("")),
 				selected_event.description().map(Line::from),
-				selected_event.location().map(|l| Line::from(format!("Location: {l}")))
+				selected_event.location().map(|l| Line::from(format!("Location: {l}"))),
+				Some(Line::from(format!("{} - {}",
+					selected_event.start_time()
+						.map(|t| t.format(TIME_FORMAT_STRING).to_string())
+						.unwrap_or(String::from("")),
+					selected_event.end_time()
+						.map(|t| t.format(TIME_FORMAT_STRING).to_string())
+						.unwrap_or(String::from(""))
+				))),
 			].into_iter().filter_map(|i| i).collect::<Vec<_>>();
 			Paragraph::new(event_info)
 				.block(event_info_block)
@@ -369,7 +378,17 @@ impl Widget for &mut Application {
 				.get_events_for_date(date);
 			let event_titles: Vec<_> = events
 				.iter()
-				.map(|e| e.title())
+				.map(|event| Text::from(vec![
+					Line::from(format!("{} - {}",
+					event.start_time()
+						.map(|t| t.format(TIME_FORMAT_STRING).to_string())
+						.unwrap_or(String::from("")),
+					event.end_time()
+						.map(|t| t.format(TIME_FORMAT_STRING).to_string())
+						.unwrap_or(String::from(""))
+					)),
+					Line::from(event.title())
+				]))
 				.collect();
 			let item_list = List::new(event_titles)
 				.block(day_block)

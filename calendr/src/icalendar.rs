@@ -317,4 +317,10 @@ impl CalendarEvent {
 	pub fn location(&self) -> Option<String> {
 		self.location.clone()
 	}
+	pub fn start_time(&self) -> Option<DateTime<Local>> {
+		self.start_time.clone()
+	}
+	pub fn end_time(&self) -> Option<DateTime<Local>> {
+		self.end_time.clone()
+	}
 }
