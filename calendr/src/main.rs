@@ -13,7 +13,7 @@ use ratatui::{
 	style::{Stylize,Style},
 	buffer::Buffer,
 	layout::{Rect,Constraint,Direction,Layout,Offset},
-	widgets::{Block, Paragraph, Widget, Shadow, Borders, List, ListState, StatefulWidget},
+	widgets::{Block, Paragraph, Widget, Shadow, Borders, List, ListState, StatefulWidget, Wrap},
 	text::{Line, Text},
 	symbols::{border},
 };
@@ -27,7 +27,7 @@ struct Application {
 	exit: bool,
 	selected_window: SelectedWindow, //0 for calendar 1 for event info
 	calendar_view_size: usize, //1 - 1 day, 7 - week
-	current_day_list_state: ListState,
+	selected_event: Option<usize>,
 	selected_date: NaiveDate,
 	calendar_scroll_offset: usize, //how far to the right the selected day is
 	calendar: CombinedCalendar,
@@ -153,7 +153,8 @@ impl Application {
 			exit: false,
 			selected_window: SelectedWindow::CalendarDisplay,
 			calendar_view_size: 3,
-			current_day_list_state: ListState::default().with_selected(Some(0)),
+			//current_day_list_state: ListState::default().with_selected(Some(0)),
+			selected_event: None,
 			selected_date: Local::now().date_naive(),
 			calendar_scroll_offset: 0,
 			calendar: calendar
@@ -180,8 +181,16 @@ impl Application {
 					KeyCode::Char('n') => self.set_selected_date(Local::now()),
 					KeyCode::Char('[') => self.decrease_selected_date_by(Months::new(1)),
 					KeyCode::Char(']') => self.increase_selected_date_by(Months::new(1)),
-					KeyCode::Down => self.select_next_event(),
-					KeyCode::Up => self.select_prev_event(),
+					KeyCode::Down =>
+						if self.selected_window == SelectedWindow::CalendarDisplay {
+							self.select_next_event();
+						}else {
+						},
+					KeyCode::Up =>
+						if self.selected_window == SelectedWindow::CalendarDisplay {
+							self.select_prev_event()
+						}else {
+						},
 					KeyCode::Right => self.scroll_calendar_right(),
 					KeyCode::Left => self.scroll_calendar_left(),
 					KeyCode::Tab => self.selected_window.next(),
@@ -193,16 +202,15 @@ impl Application {
 		Ok(())
 	}
 	fn select_next_event(&mut self){
-		self.current_day_list_state.select_next();
-		//ensure it is in bounds
-		let date = self.selected_date;
-		let events = self.calendar.get_events_for_date(date);
-		if self.current_day_list_state.selected() >= Some(events.len()){
-			self.current_day_list_state.select(Some(events.len()-1));
+		let event_count = self.calendar
+			.get_events_for_date(self.selected_date)
+			.len();
+		if event_count > 0 {
+			self.selected_event = self.selected_event.map(|i| min(i+1,event_count-1));
 		}
 	}
 	fn select_prev_event(&mut self){
-		self.current_day_list_state.select_previous();
+		self.selected_event = self.selected_event.map(|i| if i > 0 {i-1} else {i});
 	}
 	fn scroll_calendar_right(&mut self){
 		if self.calendar_scroll_offset < self.calendar_view_size-1 {
@@ -222,7 +230,7 @@ impl Application {
 			new_date.month(),
 			new_date.day()
 		);
-		self.current_day_list_state = ListState::default().with_selected(Some(0));
+		self.selected_event = Some(0);
 	}
 	fn increase_calendar_view_size(&mut self, amount: usize){
 		self.set_calendar_view_size(self.calendar_view_size+1)
@@ -269,14 +277,14 @@ impl Widget for &mut Application {
 		let [event_info_rect,calendar_display_rect] = bottom_rect.layout(&Layout::default()
 			.direction(Direction::Horizontal)
 			.constraints(vec![
-				Constraint::Min(14),
-				Constraint::Percentage(100),
+				Constraint::Min(16),
+				Constraint::Percentage(75),
 			])
 		);
 		//====== date selector ======
 		let date_selector_block = Block::bordered()
 			.title(Line::from(" Date ").centered())
-			.title_bottom(Line::from(" n to switch to today ").centered())
+			.title_bottom(Line::from(" n to switch to today ━━━ [ and ] to switch months").centered())
 			.border_set(border::THICK);
 		let date_selector_block_rect = date_selector_block.inner(top_rect);
 		date_selector_block.render(top_rect,buf);
@@ -290,7 +298,10 @@ impl Widget for &mut Application {
 			])
 		);
 		//text
-		Line::from("Month View")
+		Line::from(format!("{} Day{}",self.calendar_view_size,
+				if self.calendar_view_size == 1 {""}
+				else {"s"} //days plural if more than one
+			))
 			.centered()
 			.render(view_type,buf);
 		Line::from(self.selected_date.format(DATE_FORMAT_STRING).to_string())
@@ -300,13 +311,31 @@ impl Widget for &mut Application {
 			.centered()
 			.render(relative_day,buf);
 		//====== event info ======
-		Block::bordered()
+		//build the main block
+		let event_info_block = Block::bordered()
 			.title(Line::styled(" Event Info ",
 				if self.selected_window == SelectedWindow::EventInfo {STYLE_SELECTED_TEXT}
 				else {Style::new()}
 			).centered())
-			.border_set(border::THICK)
-			.render(event_info_rect,buf);
+			.border_set(border::THICK);
+		//grab all the info
+		let events = self.calendar.get_events_for_date(self.selected_date);
+		//do nothing if there isnt a selected event
+		if let Some(Some(selected_event)) = self.selected_event.map(|e| events.get(e)){
+			//prepare lines to go into the paragraph
+			let event_info = vec![
+				Some(Line::from(selected_event.title()).centered()),
+				Some(Line::from("")),
+				selected_event.description().map(Line::from),
+				selected_event.location().map(|l| Line::from(format!("Location: {l}")))
+			].into_iter().filter_map(|i| i).collect::<Vec<_>>();
+			Paragraph::new(event_info)
+				.block(event_info_block)
+				.wrap(Wrap { trim: false })
+				.render(event_info_rect,buf);
+		}else {
+			event_info_block.render(event_info_rect,buf);
+		}
 		//====== calendar display ======
 		//block outline
 		let calendar_display_block = Block::bordered()
@@ -346,8 +375,8 @@ impl Widget for &mut Application {
 				.block(day_block)
 				.highlight_style(STYLE_SELECTED_TEXT);
 			//only the selected date gets the selected ListState
-			let mut list_state = if this_day_selected {
-				self.current_day_list_state
+			let mut list_state = if this_day_selected && events.len() > 0 {
+				ListState::default().with_selected(self.selected_event)
 			}else {
 				ListState::default()
 			};

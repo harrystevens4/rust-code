@@ -34,7 +34,8 @@ pub struct CalendarEvent {
 	start_time: Option<DateTime<Local>>,
 	end_time: Option<DateTime<Local>>,
 	uuid: String,
-	description: String,
+	description: Option<String>,
+	location: Option<String>,
 }
 
 //allows merging of multiple ICalendar's
@@ -199,7 +200,7 @@ impl ICalendar {
 			let properties = &ic_event_component.properties;
 			events.push(CalendarEvent::from_calendar(self)
 				.with_title(properties.get("SUMMARY").unwrap_or(&String::new()))
-				.with_description(properties.get("DESCRIPTION").unwrap_or(&String::new()))
+				.with_description(properties.get("DESCRIPTION").cloned())
 				.with_start_time(properties
 					.get("DTSTART")
 					.map(|t| iso_to_local_time(t))
@@ -215,6 +216,7 @@ impl ICalendar {
 					.map(String::from)
 					.unwrap_or(Uuid::new_v4().simple().to_string())
 				)
+				.with_location(properties.get("LOCATION").cloned())
 			)
 		}
 		events
@@ -261,9 +263,10 @@ impl CalendarEvent {
 		CalendarEvent {
 			parent_calendar_name: calendar.name(),
 			title: String::new(),
-			description: String::new(),
+			description: None,
 			start_time: None,
 			end_time: None,
+			location: None,
 			uuid: Uuid::new_v4().simple().to_string(),
 		}.with_duration(Duration::from_hours(1))
 	}
@@ -297,11 +300,21 @@ impl CalendarEvent {
 		self.uuid = uuid.to_string();
 		self
 	}
-	pub fn with_description(mut self, description: &str) -> CalendarEvent {
-		self.description = description.to_string();
+	pub fn with_description(mut self, description: Option<String>) -> CalendarEvent {
+		self.description = description;
+		self
+	}
+	pub fn with_location(mut self, location: Option<String>) -> CalendarEvent {
+		self.location = location;
 		self
 	}
 	pub fn title(&self) -> String {
 		self.title.clone()
+	}
+	pub fn description(&self) -> Option<String> {
+		self.description.clone()
+	}
+	pub fn location(&self) -> Option<String> {
+		self.location.clone()
 	}
 }
