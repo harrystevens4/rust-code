@@ -2,7 +2,7 @@ use std::io;
 use std::iter::Peekable;
 use std::collections::HashMap;
 use std::time::{SystemTime,Duration};
-use chrono::{DateTime,Utc,Datelike};
+use chrono::{DateTime,Utc,Datelike,Local};
 use uuid::Uuid;
 
 #[derive(Debug,PartialEq)]
@@ -27,12 +27,12 @@ struct ICComponent {
 }
 
 //slightly higher level abstration of ICComponent
-#[derive(Debug)]
+#[derive(Debug,Clone)]
 pub struct CalendarEvent {
 	parent_calendar_name: String,
 	title: String,
-	start_time: SystemTime,
-	end_time: SystemTime,
+	start_time: DateTime<Local>,
+	end_time: DateTime<Local>,
 	uuid: String,
 	description: String,
 }
@@ -49,44 +49,6 @@ pub struct ICalendar {
 	root_component: ICComponent, //like VCALENDAR for a full calendar or VEVENT for a single event
 	name: String,
 }
-
-//fn iso_to_system_time(iso_time: &str) -> SystemTime {
-//	//====== process timestamp ======
-//	let timestamp = iso_time
-//		.replace("-","")
-//		.replace(":","")
-//		.make_ascii_uppercase();
-//	let mut date_string = String::new();
-//	let mut time_string = None;
-//	let mut timezone_string = None;
-//	if let Some((date,time)) = timestamp.split_once("T"){
-//		date_string = date;
-//		if let Some((split_time,split_timezone)) = time.split_once("Z"){
-//			time_string = Some(split_time);
-//			timezone_string = Some(split_timezone);
-//		}else {
-//			time_string = Some(time);
-//		}
-//	}else {
-//		date_string = timestamp;
-//	}
-//	//====== calculate systemtime offset ======
-//	//01-01-1970
-//	let year = date_string[0..4].try_into().ok_or(0_isize);
-//	let month = date_string[4..6].try_into().ok_or(0_isize);
-//	let day = date_string[6..8].try_into().ok_or(0_isize);
-//	let hour = time_string[0..2].try_into().ok_or(0_isize);
-//	let minute = time_string[2..4].try_into().ok_or(0_isize);
-//	let second = time_string[4..6].try_into().ok_or(0_isize);
-//	let epoch = SystemTime::UNIX_EPOCH;
-//	epoch += Duration::from_years(year - 1970);
-//	epoch += Duration::from_months(year - 1);
-//	epoch += Duration::from_days(year - 1);
-//	epoch += Duration::from_hours(hours);
-//	epoch += Duration::from_mins(minutes);
-//	epoch += Duration::from_secs(seconds);
-//	return epoch;
-//}
 
 impl From<&str> for ICComponentType {
 	fn from(string: &str) -> ICComponentType {
@@ -106,13 +68,12 @@ impl From<&str> for ICComponentType {
 	}
 }
 
-fn iso_to_system_time(iso_time: &str) -> SystemTime {
+fn iso_to_local_time(iso_time: &str) -> DateTime<Local> {
 	DateTime::parse_from_rfc3339(iso_time)
 		.unwrap_or(DateTime::<Utc>::from(SystemTime::now()).into())
 		.into()
 }
-fn get_date_hash(date: SystemTime) -> usize {
-	let date: DateTime<Utc> = date.into(); 
+fn get_date_hash(date: impl Datelike) -> usize {
 	let year = date.year() as usize;
 	let month = date.month() as usize;
 	let day = date.day() as usize;
@@ -206,20 +167,19 @@ impl ICalendar {
 		for ic_event_component in ic_event_components {
 			let properties = &ic_event_component.properties;
 			events.push(CalendarEvent::from_calendar(self)
-				.add_title(properties.get("SUMMARY").unwrap_or(&String::new()))
-				.add_description(properties.get("DESCRIPTION").unwrap_or(&String::new()))
-				.add_start_time(properties
+				.with_title(properties.get("SUMMARY").unwrap_or(&String::new()))
+				.with_description(properties.get("DESCRIPTION").unwrap_or(&String::new()))
+				.with_start_time(properties
 					.get("DTSTART")
-					.map(|t| iso_to_system_time(t))
-					.unwrap_or(SystemTime::now())
+					.map(|t| iso_to_local_time(t))
+					.unwrap_or(Local::now())
 				)
-				.add_end_time(properties
+				.with_end_time(properties
 					.get("DTEND")
-					.map(|t| iso_to_system_time(t))
-					.unwrap_or(SystemTime::now().into())
-					.into()
+					.map(|t| iso_to_local_time(t))
+					.unwrap_or(Local::now())
 				)
-				.add_uuid(&properties
+				.with_uuid(&properties
 					.get("UID")
 					.map(String::from)
 					.unwrap_or(Uuid::new_v4().simple().to_string())
@@ -258,6 +218,12 @@ impl CombinedCalendar {
 		println!("{:#?}",combined_calendar.events);
 		Ok(combined_calendar)
 	}
+	pub fn get_events_for_date(&self,date: impl Datelike) -> Vec<CalendarEvent>{
+		//====== pull out events for the selected day ======
+		let Some(events) = self.events.get(&get_date_hash(date))
+		else {return vec![]};
+		events.to_vec()
+	}
 }
 
 impl CalendarEvent {
@@ -266,36 +232,36 @@ impl CalendarEvent {
 			parent_calendar_name: calendar.name(),
 			title: String::new(),
 			description: String::new(),
-			start_time: SystemTime::now(),
-			end_time: SystemTime::now(),
+			start_time: Local::now(),
+			end_time: Local::now(),
 			uuid: Uuid::new_v4().simple().to_string(),
-		}.add_duration(Duration::from_hours(1))
+		}.with_duration(Duration::from_hours(1))
 	}
 	pub fn get_date_hash(&self) -> usize {
 		get_date_hash(self.start_time)
 	}
-	pub fn add_start_time(mut self, time: SystemTime) -> CalendarEvent {
+	pub fn with_start_time(mut self, time: DateTime<Local>) -> CalendarEvent {
 		self.start_time = time;
 		self
 	}
-	pub fn add_end_time(mut self, time: SystemTime) -> CalendarEvent {
+	pub fn with_end_time(mut self, time: DateTime<Local>) -> CalendarEvent {
 		self.end_time = time;
 		self
 	}
 	//essentialy add_end_time but does the maths for you
-	pub fn add_duration(mut self, duration: Duration) -> CalendarEvent {
-		self.end_time = self.start_time.checked_add(duration).unwrap_or(self.start_time);
+	pub fn with_duration(mut self, duration: Duration) -> CalendarEvent {
+		self.end_time = self.start_time + duration;
 		self
 	}
-	pub fn add_title(mut self, title: &str) -> CalendarEvent {
+	pub fn with_title(mut self, title: &str) -> CalendarEvent {
 		self.title = title.to_string();
 		self
 	}
-	pub fn add_uuid(mut self, uuid: &str) -> CalendarEvent {
+	pub fn with_uuid(mut self, uuid: &str) -> CalendarEvent {
 		self.uuid = uuid.to_string();
 		self
 	}
-	pub fn add_description(mut self, description: &str) -> CalendarEvent {
+	pub fn with_description(mut self, description: &str) -> CalendarEvent {
 		self.description = description.to_string();
 		self
 	}
