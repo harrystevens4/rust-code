@@ -18,11 +18,11 @@ use ratatui::{
 	symbols::{border},
 };
 use std::default::Default;
-use chrono::{Local,NaiveDate,Datelike,Days,Months,TimeDelta};
+use chrono::{Local,NaiveDate,Datelike,Days,Months,TimeDelta,NaiveTime,NaiveDateTime};
 
-static STYLE_SELECTED_TEXT: Style = Style::new().on_red();
-static DATE_FORMAT_STRING: &str = "%a - %d/%m/%Y";
-static TIME_FORMAT_STRING: &str = "%H:%M";
+const STYLE_SELECTED_TEXT: Style = Style::new().on_red();
+const DATE_FORMAT_STRING: &str = "%a - %d/%m/%Y";
+const TIME_FORMAT_STRING: &str = "%H:%M";
 
 struct Application {
 	exit: bool,
@@ -234,10 +234,10 @@ impl Application {
 		self.selected_event = Some(0);
 	}
 	fn increase_calendar_view_size(&mut self, amount: usize){
-		self.set_calendar_view_size(self.calendar_view_size+1)
+		self.set_calendar_view_size(self.calendar_view_size+amount)
 	}
 	fn decrease_calendar_view_size(&mut self, amount: usize){
-		self.set_calendar_view_size(self.calendar_view_size-1)
+		self.set_calendar_view_size(self.calendar_view_size-amount)
 	}
 	fn set_calendar_view_size(&mut self, new_size: usize){
 		//min and max bounds
@@ -373,29 +373,33 @@ impl Widget for &mut Application {
 					.centered()
 					.style(if this_day_selected {STYLE_SELECTED_TEXT} else {Style::default()})
 				);
-			//grab our events
+			let list_item_width = calendar_day_layout[i].width as isize;
 			let events = self.calendar
 				.get_events_for_date(date);
+			//for each hour fetch events
 			let event_titles: Vec<_> = events
 				.iter()
-				.map(|event| Text::from(vec![
-					Line::from(format!("{} - {}",
+				.map(|event| vec![
+					Line::from(format!("--- {} - {} {}",
 					event.start_time()
 						.map(|t| t.format(TIME_FORMAT_STRING).to_string())
 						.unwrap_or(String::from("")),
 					event.end_time()
 						.map(|t| t.format(TIME_FORMAT_STRING).to_string())
-						.unwrap_or(String::from(""))
+						.unwrap_or(String::from("")),
+					"-".repeat(max(list_item_width-12,0) as usize)
 					)),
-					Line::from(event.title())
-				]))
+					Line::from(event.title()),
+					Line::from("")
+				])
+				.flatten() //will flatten [["00:00","event1"],["01:00",event2]]
 				.collect();
 			let item_list = List::new(event_titles)
 				.block(day_block)
 				.highlight_style(STYLE_SELECTED_TEXT);
 			//only the selected date gets the selected ListState
 			let mut list_state = if this_day_selected && events.len() > 0 {
-				ListState::default().with_selected(self.selected_event)
+				ListState::default().with_selected(self.selected_event.map(|n| n*3 + 1))
 			}else {
 				ListState::default()
 			};
