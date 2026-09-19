@@ -4,7 +4,7 @@ use ratatui::{
 	Frame,
 	crossterm,
 	crossterm::event::{KeyCode,KeyEventKind,Event},
-	style::{Stylize,Style},
+	style::{Stylize,Style,Color},
 	buffer::Buffer,
 	layout::{Rect,Constraint,Direction,Layout,Offset},
 	widgets::{Block, Paragraph, Widget, Shadow, Borders, List, ListState, StatefulWidget, Wrap},
@@ -18,6 +18,7 @@ use std::error::Error;
 use std::ops::Sub;
 use crate::icalendar::{CombinedCalendar,CalendarEvent};
 use std::io;
+use std::hash::{Hash,DefaultHasher,Hasher};
 
 pub struct Application {
 	exit: bool,
@@ -89,6 +90,20 @@ trait DateOffsetString<U: Datelike + Copy>: Datelike + Copy {
 trait IsToday {
 	fn is_today(&self) -> bool;
 }
+trait DeriveColor {
+	//i was thinking it would lowk be easy if i just got the calendar colour from the name
+	fn derive_color(&self) -> Color
+	where Self: Hash {
+		let mut hasher = DefaultHasher::new();
+		self.hash(&mut hasher);
+		let hash = hasher.finish();
+		let hash = hash % 16777216; //cap to 3 bytes
+		Color::from_u32(hash as u32)
+	}
+}
+
+impl DeriveColor for String {}
+impl DeriveColor for &str {}
 
 impl<T: Datelike + Copy> DateOffsetString<T> for NaiveDate {}
 impl IsToday for NaiveDate {
@@ -298,7 +313,10 @@ impl Application {
 				selected_event.description().map(Line::from),
 				selected_event.location().map(|l| Line::from(format!("Location: {l}"))),
 				Some(Line::from(Self::format_event_timespan(&selected_event))),
-				Some(Line::from(format!("Calendar: {}",selected_event.parent_calendar_name()))),
+				Some(Line::styled(
+					format!("Calendar: {}",selected_event.parent_calendar_name()),
+					Style::default().fg(selected_event.parent_calendar_name().derive_color())
+				)),
 			].into_iter().filter_map(|i| i).collect::<Vec<_>>();
 			Paragraph::new(event_info)
 				.block(event_info_block)
@@ -356,7 +374,11 @@ impl Application {
 						Self::format_event_timespan(&event),
 						"-".repeat(max(list_item_width-12,0) as usize)
 					)),
-					Line::from(event.title()),
+					Line::styled(
+						event.title(),
+						Style::default()
+							.fg(event.parent_calendar_name().derive_color())
+					),
 					Line::from("")
 				])
 				.flatten() //will flatten [["00:00","event1",""],["01:00","event2",""]]
