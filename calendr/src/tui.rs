@@ -232,6 +232,20 @@ impl Application {
 		}
 	}
 	//============ rendering functions ============
+	fn format_event_timespan(event: &CalendarEvent) -> String {
+		if event.is_all_day(){
+			format!("All day")
+		}else {
+			format!("{} - {}",
+				event.start_time()
+					.map(|t| t.format(TIME_FORMAT_STRING).to_string())
+					.unwrap_or(String::from("")),
+				event.end_time()
+					.map(|t| t.format(TIME_FORMAT_STRING).to_string())
+					.unwrap_or(String::from(""))
+			)
+		}
+	}
 	fn draw(&mut self, frame: &mut Frame){
 		frame.render_widget(self,frame.area());
 	}
@@ -283,14 +297,7 @@ impl Application {
 				Some(Line::from("")),
 				selected_event.description().map(Line::from),
 				selected_event.location().map(|l| Line::from(format!("Location: {l}"))),
-				Some(Line::from(format!("{} - {}",
-					selected_event.start_time()
-						.map(|t| t.format(TIME_FORMAT_STRING).to_string())
-						.unwrap_or(String::from("")),
-					selected_event.end_time()
-						.map(|t| t.format(TIME_FORMAT_STRING).to_string())
-						.unwrap_or(String::from(""))
-				))),
+				Some(Line::from(Self::format_event_timespan(&selected_event))),
 				Some(Line::from(format!("Calendar: {}",selected_event.parent_calendar_name()))),
 			].into_iter().filter_map(|i| i).collect::<Vec<_>>();
 			Paragraph::new(event_info)
@@ -341,29 +348,14 @@ impl Application {
 			let list_item_width = calendar_day_layout[i].width as isize;
 			let events = self.calendar
 				.get_events_for_date(date);
-			//format the line that shows the event start and end time
-			let format_event_time_line = |event: &CalendarEvent|{
-				if event.is_all_day(){
-					Line::from(format!("--- All day {}",
-						"-".repeat(max(list_item_width-12,0) as usize)
-					))
-				}else {
-					Line::from(format!("--- {} - {} {}",
-						event.start_time()
-							.map(|t| t.format(TIME_FORMAT_STRING).to_string())
-							.unwrap_or(String::from("")),
-						event.end_time()
-							.map(|t| t.format(TIME_FORMAT_STRING).to_string())
-							.unwrap_or(String::from("")),
-						"-".repeat(max(list_item_width-12,0) as usize)
-					))
-				}
-			};
 			//for each hour fetch events
 			let event_titles: Vec<_> = events
 				.iter()
 				.map(|event| vec![
-					format_event_time_line(&event),
+					Line::from(format!("--- {} {}",
+						Self::format_event_timespan(&event),
+						"-".repeat(max(list_item_width-12,0) as usize)
+					)),
 					Line::from(event.title()),
 					Line::from("")
 				])
