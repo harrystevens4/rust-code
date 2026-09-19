@@ -2,7 +2,7 @@ use std::io;
 use std::iter::Peekable;
 use std::collections::HashMap;
 use std::time::{SystemTime,Duration};
-use chrono::{DateTime,Utc,Datelike,Local,NaiveDate,TimeZone};
+use chrono::{DateTime,Utc,Datelike,Local,NaiveDate,TimeZone,Timelike,TimeDelta};
 use uuid::Uuid;
 use std::error::Error;
 
@@ -343,5 +343,14 @@ impl CalendarEvent {
 	}
 	pub fn parent_calendar_name(&self) -> String {
 		self.parent_calendar_name.clone()
+	}
+	pub fn is_all_day(&self) -> bool {
+		//get the start and end time
+		let (Some(start),Some(end)) = (self.start_time(),self.end_time())
+		else {return false};
+		//does it start at 00:00
+		if (start.hour(),start.minute(),start.second()) == (0,0,0)
+			&& end-start == TimeDelta::hours(24) {true} //is it exactly 24 hours
+		else {false}
 	}
 }
