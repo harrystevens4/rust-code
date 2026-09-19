@@ -125,7 +125,7 @@ impl Application {
 			selected_window: SelectedWindow::CalendarDisplay,
 			calendar_view_size: 3,
 			//current_day_list_state: ListState::default().with_selected(Some(0)),
-			selected_event: None,
+			selected_event: Some(0),
 			selected_date: Local::now().date_naive(),
 			calendar_scroll_offset: 0,
 			calendar: calendar
