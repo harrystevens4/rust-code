@@ -151,8 +151,14 @@ fn iso_to_local_time(iso_time: &str) -> Option<DateTime<Local>> {
 		second = time_string[4..6].parse().unwrap_or(0);
 	}
 	//0 is actualy 1 BCE?????
-	let datetime = Local.with_ymd_and_hms(year,month,day,hour,minute,second);
-	return datetime.earliest();
+	if iso_time.contains("T") {
+		Utc.with_ymd_and_hms(year,month,day,hour,minute,second)
+			.earliest()
+			.map(DateTime::<Local>::from)
+	}else {
+		Local.with_ymd_and_hms(year,month,day,hour,minute,second)
+			.earliest()
+	}
 }
 fn get_date_hash(date: impl Datelike) -> usize {
 	let year = date.year() as usize;
