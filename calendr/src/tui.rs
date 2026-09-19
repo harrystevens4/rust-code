@@ -16,7 +16,7 @@ use chrono::{Local,NaiveDate,Datelike,Days,Months,TimeDelta,NaiveTime,NaiveDateT
 use crate::{DATE_FORMAT_STRING,TIME_FORMAT_STRING,STYLE_SELECTED_TEXT,STYLE_HIGHLIGHTED_TEXT};
 use std::error::Error;
 use std::ops::Sub;
-use crate::icalendar::{CombinedCalendar,CalendarEvent};
+use crate::icalendar::{CombinedCalendar,CalendarEvent,ClampDateToDay};
 use std::io;
 use std::hash::{Hash,DefaultHasher,Hasher};
 
@@ -247,15 +247,17 @@ impl Application {
 		}
 	}
 	//============ rendering functions ============
-	fn format_event_timespan(event: &CalendarEvent) -> String {
-		if event.is_all_day(){
+	fn format_event_timespan(event: &CalendarEvent, day: NaiveDate) -> String {
+		if event.is_all_day(day){
 			format!("All day")
 		}else {
 			format!("{} - {}",
 				event.start_time()
+					.map(|t| t.clamp_date_to_day(day))
 					.map(|t| t.format(TIME_FORMAT_STRING).to_string())
 					.unwrap_or(String::from("")),
 				event.end_time()
+					.map(|t| t.clamp_date_to_day(day))
 					.map(|t| t.format(TIME_FORMAT_STRING).to_string())
 					.unwrap_or(String::from(""))
 			)
@@ -312,7 +314,7 @@ impl Application {
 				Some(Line::from("")),
 				selected_event.description().map(Line::from),
 				selected_event.location().map(|l| Line::from(format!("Location: {l}"))),
-				Some(Line::from(Self::format_event_timespan(&selected_event))),
+				Some(Line::from(Self::format_event_timespan(&selected_event,self.selected_date))),
 				Some(Line::styled(
 					format!("Calendar: {}",selected_event.parent_calendar_name()),
 					Style::default().fg(selected_event.parent_calendar_name().derive_color())
@@ -371,7 +373,7 @@ impl Application {
 				.iter()
 				.map(|event| vec![
 					Line::from(format!("--- {} {}",
-						Self::format_event_timespan(&event),
+						Self::format_event_timespan(&event,date),
 						"-".repeat(max(list_item_width-12,0) as usize)
 					)),
 					Line::styled(

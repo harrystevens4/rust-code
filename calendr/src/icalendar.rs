@@ -2,9 +2,10 @@ use std::io;
 use std::iter::Peekable;
 use std::collections::HashMap;
 use std::time::{SystemTime,Duration};
-use chrono::{DateTime,Utc,Datelike,Local,NaiveDate,TimeZone,Timelike,TimeDelta};
+use chrono::{DateTime,Utc,Datelike,Local,NaiveDate,TimeZone,Timelike,TimeDelta,Days};
 use uuid::Uuid;
 use std::error::Error;
+use std::cmp::{min,max};
 use std::cmp::{Ord,Ordering,PartialOrd,PartialEq,Eq};
 
 #[derive(Debug,PartialEq)]
@@ -54,6 +55,31 @@ pub struct CombinedCalendar {
 pub struct ICalendar {
 	root_component: ICComponent, //like VCALENDAR for a full calendar or VEVENT for a single event
 	name: String,
+}
+
+pub trait ClampDateToDay {
+	fn clamp_date_to_day(self, day: NaiveDate) -> Self;
+}
+
+impl ClampDateToDay for DateTime<Local> {
+	fn clamp_date_to_day(self, day: NaiveDate) -> Self {
+		//am i allowed to expect here? id rather it crash than fail silently as h, m and s are hardcoded here
+		let min_datetime = day
+			.and_hms_opt(0,0,0)
+			.expect("and_hms_opt() invalid h, m or s")
+			.and_local_timezone(Local)
+			.earliest()
+			.unwrap_or(self);
+		let max_datetime = (day
+			.and_hms_opt(0,0,0)
+			.expect("and_hms_opt() invalid h, m or s")
+			+ Days::new(1)
+			).and_local_timezone(Local)
+			.earliest()
+			.unwrap_or(self);
+		let clamped_to_min = max(min_datetime,self);
+		min(max_datetime,clamped_to_min)
+	}
 }
 
 //ordered by start time
@@ -289,17 +315,20 @@ impl CombinedCalendar {
 		events.to_vec()
 	}
 	fn add_new_event(&mut self, event: CalendarEvent){
-		let hash = event.get_date_hash();
-		//create event list if one doesnt already exist
-		if !self.events.contains_key(&hash){
-			self.events.insert(hash,vec![]);
-			self.events.get_mut(&hash);
+		//find all the days the event is on
+		for date in event.get_date_span() {
+			let hash = get_date_hash(date);
+			//create event list if one doesnt already exist
+			if !self.events.contains_key(&hash){
+				self.events.insert(hash,vec![]);
+				self.events.get_mut(&hash);
+			}
+			//add the event to the list
+			self.events.get_mut(&hash).map(|l|{
+				let index = l.binary_search(&event).unwrap_or_else(|e| e);
+				l.insert(index,event.clone());
+			});
 		}
-		//add the event to the list
-		self.events.get_mut(&hash).map(|l|{
-			let index = l.binary_search(&event).unwrap_or_else(|e| e);
-			l.insert(index,event);
-		});
 	}
 }
 
@@ -314,13 +343,6 @@ impl CalendarEvent {
 			location: None,
 			uuid: Uuid::new_v4().simple().to_string(),
 		}.with_duration(Duration::from_hours(1))
-	}
-	pub fn get_date_hash(&self) -> usize {
-		if let Some(start_time) = self.start_time {
-			get_date_hash(start_time)
-		}else {
-			0
-		}
 	}
 	pub fn with_start_time(mut self, time: Option<DateTime<Local>>) -> CalendarEvent {
 		self.start_time = time;
@@ -371,13 +393,30 @@ impl CalendarEvent {
 	pub fn parent_calendar_name(&self) -> String {
 		self.parent_calendar_name.clone()
 	}
-	pub fn is_all_day(&self) -> bool {
+	pub fn is_all_day(&self, day: NaiveDate) -> bool {
 		//get the start and end time
 		let (Some(start),Some(end)) = (self.start_time(),self.end_time())
+		//clamp it
 		else {return false};
+		let start = start.clamp_date_to_day(day);
+		let end = end.clamp_date_to_day(day);
 		//does it start at 00:00
 		if (start.hour(),start.minute(),start.second()) == (0,0,0)
 			&& end-start == TimeDelta::hours(24) {true} //is it exactly 24 hours
 		else {false}
+	}
+	//all the dates for which this event lies on
+	pub fn get_date_span(&self) -> Vec<NaiveDate> {
+		//if there isnt a start or end time it wont have a date span
+		let (Some(start_time),Some(end_time)) = (self.start_time(),self.end_time())
+		else {return vec![]};
+		//go through each date from start to end and add it to the span
+		let mut date_span = vec![];
+		for i in 0.. {
+			let date = start_time + Days::new(i);
+			if date >= end_time {break}
+			date_span.push(date.date_naive());
+		}
+		date_span
 	}
 }
