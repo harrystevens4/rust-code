@@ -7,7 +7,7 @@ use icalendar::CombinedCalendar;
 use ratatui::style::Style;
 use crate::tui::Application;
 
-const STYLE_SELECTED_TEXT: Style = Style::new().on_red();
+const STYLE_SELECTED_TEXT: Style = Style::new().white().on_red();
 const STYLE_HIGHLIGHTED_TEXT: Style = Style::new().underlined();
 const DATE_FORMAT_STRING: &str = "%a - %d/%m/%Y";
 const TIME_FORMAT_STRING: &str = "%H:%M";
