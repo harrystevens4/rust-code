@@ -13,10 +13,10 @@ use ratatui::{
 };
 use std::default::Default;
 use chrono::{Local,NaiveDate,Datelike,Days,Months,TimeDelta,NaiveTime,NaiveDateTime};
-use crate::{DATE_FORMAT_STRING,TIME_FORMAT_STRING,STYLE_SELECTED_TEXT};
+use crate::{DATE_FORMAT_STRING,TIME_FORMAT_STRING,STYLE_SELECTED_TEXT,STYLE_HIGHLIGHTED_TEXT};
 use std::error::Error;
 use std::ops::Sub;
-use crate::icalendar::CombinedCalendar;
+use crate::icalendar::{CombinedCalendar,CalendarEvent};
 use std::io;
 
 pub struct Application {
@@ -86,8 +86,17 @@ trait DateOffsetString<U: Datelike + Copy>: Datelike + Copy {
 		}
 	}
 }
+trait IsToday {
+	fn is_today(&self) -> bool;
+}
 
 impl<T: Datelike + Copy> DateOffsetString<T> for NaiveDate {}
+impl IsToday for NaiveDate {
+	fn is_today(&self) -> bool {
+		let now = Local::now().date_naive();
+		(self.day(),self.month(),self.year()) == (now.day(),now.month(),now.year())
+	}
+}
 impl SelectedWindow {
 	pub fn next(&mut self){
 		use SelectedWindow::*;
@@ -318,25 +327,43 @@ impl Application {
 				.borders(Borders::LEFT)
 				.title_top(Line::from(date.format(DATE_FORMAT_STRING).to_string())
 					.centered()
-					.style(if this_day_selected {STYLE_SELECTED_TEXT} else {Style::default()})
+					.style(
+						//highlight red if it is selected
+						if this_day_selected {STYLE_SELECTED_TEXT} 
+						else {Style::default()}
+						.patch(
+							//underline if it is todays date
+							if date.is_today() {STYLE_HIGHLIGHTED_TEXT}
+							else {Style::default()}
+						)
+					)
 				);
 			let list_item_width = calendar_day_layout[i].width as isize;
 			let events = self.calendar
 				.get_events_for_date(date);
+			//format the line that shows the event start and end time
+			let format_event_time_line = |event: &CalendarEvent|{
+				if event.is_all_day(){
+					Line::from(format!("--- All day {}",
+						"-".repeat(max(list_item_width-12,0) as usize)
+					))
+				}else {
+					Line::from(format!("--- {} - {} {}",
+						event.start_time()
+							.map(|t| t.format(TIME_FORMAT_STRING).to_string())
+							.unwrap_or(String::from("")),
+						event.end_time()
+							.map(|t| t.format(TIME_FORMAT_STRING).to_string())
+							.unwrap_or(String::from("")),
+						"-".repeat(max(list_item_width-12,0) as usize)
+					))
+				}
+			};
 			//for each hour fetch events
 			let event_titles: Vec<_> = events
 				.iter()
-				//unsure how to format this so it looks slightly more sane
 				.map(|event| vec![
-					Line::from(format!("--- {} - {} {}",
-					event.start_time()
-						.map(|t| t.format(TIME_FORMAT_STRING).to_string())
-						.unwrap_or(String::from("")),
-					event.end_time()
-						.map(|t| t.format(TIME_FORMAT_STRING).to_string())
-						.unwrap_or(String::from("")),
-					"-".repeat(max(list_item_width-12,0) as usize)
-					)),
+					format_event_time_line(&event),
 					Line::from(event.title()),
 					Line::from("")
 				])
