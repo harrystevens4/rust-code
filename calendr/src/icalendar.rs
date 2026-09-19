@@ -142,6 +142,7 @@ fn iso_to_local_time(iso_time: &str) -> Option<DateTime<Local>> {
 	let year =   date_string[0..4].parse().unwrap_or(0);
 	let month =  date_string[4..6].parse().unwrap_or(0);
 	let day =    date_string[6..8].parse().unwrap_or(0);
+	//0 is actualy 1 BCE?????
 	let mut hour = 0;
 	let mut minute = 0;
 	let mut second = 0;
@@ -150,8 +151,8 @@ fn iso_to_local_time(iso_time: &str) -> Option<DateTime<Local>> {
 		minute = time_string[2..4].parse().unwrap_or(0);
 		second = time_string[4..6].parse().unwrap_or(0);
 	}
-	//0 is actualy 1 BCE?????
-	if iso_time.contains("T") {
+	//if it has Z then it is a utc timestamp otherwise it is local time
+	if iso_time.contains("Z") {
 		Utc.with_ymd_and_hms(year,month,day,hour,minute,second)
 			.earliest()
 			.map(DateTime::<Local>::from)
