@@ -5,6 +5,7 @@ use std::time::{SystemTime,Duration};
 use chrono::{DateTime,Utc,Datelike,Local,NaiveDate,TimeZone,Timelike,TimeDelta};
 use uuid::Uuid;
 use std::error::Error;
+use std::cmp::{Ord,Ordering,PartialOrd,PartialEq,Eq};
 
 #[derive(Debug,PartialEq)]
 pub enum ICComponentType {
@@ -20,6 +21,7 @@ pub enum ICComponentType {
 	Other,
 }
 
+//this is a component in an ICS file
 #[derive(Debug)]
 struct ICComponent {
 	component_type: ICComponentType,
@@ -39,6 +41,7 @@ pub struct CalendarEvent {
 	location: Option<String>,
 }
 
+//this represents multiple ICS files merged into one callendar
 //allows merging of multiple ICalendar's
 #[derive(Debug)]
 pub struct CombinedCalendar {
@@ -46,10 +49,29 @@ pub struct CombinedCalendar {
 	events: HashMap<usize,Vec<CalendarEvent>>, //usize is a date here like 15092026
 }
 
+//this represents a single ICS file
 #[derive(Debug)]
 pub struct ICalendar {
 	root_component: ICComponent, //like VCALENDAR for a full calendar or VEVENT for a single event
 	name: String,
+}
+
+//ordered by start time
+impl Eq for CalendarEvent {}
+impl Ord for CalendarEvent {
+	fn cmp(&self, other: &Self) -> Ordering {
+		self.start_time.cmp(&other.start_time())
+	}
+}
+impl PartialEq for CalendarEvent {
+	fn eq(&self, other: &Self) -> bool {
+		self.start_time() == other.start_time()
+	}
+}
+impl PartialOrd for CalendarEvent {
+	fn partial_cmp(&self, other: &Self) -> Option<Ordering> {
+		Some(self.cmp(&other))
+	}
 }
 
 impl From<&str> for ICComponentType {
@@ -254,15 +276,7 @@ impl CombinedCalendar {
 			let events = calendar.get_calendar_events();
 			combined_calendar.calendars.push(calendar);
 			for event in events {
-				let hash = event.get_date_hash();
-				let Some(ref mut date_event_list) = (if combined_calendar.events.contains_key(&hash) {
-					combined_calendar.events.get_mut(&hash)
-				}else {
-					combined_calendar.events.insert(hash,vec![]);
-					combined_calendar.events.get_mut(&hash)
-				})
-				else {continue};
-				date_event_list.push(event);
+				combined_calendar.add_new_event(event);
 			}
 		}
 		//println!("{:#?}",combined_calendar.events);
@@ -273,6 +287,19 @@ impl CombinedCalendar {
 		let Some(events) = self.events.get(&get_date_hash(date))
 		else {return vec![]};
 		events.to_vec()
+	}
+	fn add_new_event(&mut self, event: CalendarEvent){
+		let hash = event.get_date_hash();
+		//create event list if one doesnt already exist
+		if !self.events.contains_key(&hash){
+			self.events.insert(hash,vec![]);
+			self.events.get_mut(&hash);
+		}
+		//add the event to the list
+		self.events.get_mut(&hash).map(|l|{
+			let index = l.binary_search(&event).unwrap_or_else(|e| e);
+			l.insert(index,event);
+		});
 	}
 }
 
