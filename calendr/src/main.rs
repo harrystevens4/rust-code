@@ -115,30 +115,26 @@ impl From<Months> for DaysOrMonths {
 
 fn main() -> Result<(),()>{
 	//====== grab the calendars ======
-	let Some(calendar_url) = env::args().nth(1)
-	else {
-		eprintln!("please provide ics url as first argument");
+	let calendar_urls: Vec<_> = env::args()
+		.skip(1)
+		.collect();
+	if calendar_urls.len() == 0 {
+		eprintln!("please provide ics urls as command line arguments");
 		return Err(());
-	};
-	println!("fetching calendars...");
-	let calendar_raw = match reqwest::blocking::get(calendar_url).map(|c| c.text()).flatten(){
+	}
+	//====== fetch and load each one ======
+	let calendar_urls = calendar_urls
+		.into_iter()
+		.enumerate()
+		.map(|(n,url)| (format!("Url calendar {}",n),url))
+		.collect();
+	let calendar = match CombinedCalendar::load_from_urls(calendar_urls){
 		Ok(c) => c,
 		Err(e) => {
-			eprintln!("Error fetching calendar: {e}");
+			eprintln!("Error loading calendars: {e}");
 			return Err(());
 		}
 	};
-	println!("loading calendars...");
-	let calendar = match CombinedCalendar::load_from_strings(vec![
-		("calendar1",&calendar_raw)
-	]){
-		Ok(c) => c,
-		Err(e) => {
-			eprintln!("Error loading calendar: {e}");
-			return Err(());
-		}
-	};
-	//println!("{calendar:#?}");
 	//====== ratatui ======
 	let mut application = Application::new(calendar);
 	if let Err(e) = ratatui::run(move |terminal| application.tui_loop(terminal)){
@@ -337,6 +333,7 @@ impl Widget for &mut Application {
 						.map(|t| t.format(TIME_FORMAT_STRING).to_string())
 						.unwrap_or(String::from(""))
 				))),
+				Some(Line::from(format!("Calendar: {}",selected_event.parent_calendar_name()))),
 			].into_iter().filter_map(|i| i).collect::<Vec<_>>();
 			Paragraph::new(event_info)
 				.block(event_info_block)
@@ -379,6 +376,7 @@ impl Widget for &mut Application {
 			//for each hour fetch events
 			let event_titles: Vec<_> = events
 				.iter()
+				//unsure how to format this so it looks slightly more sane
 				.map(|event| vec![
 					Line::from(format!("--- {} - {} {}",
 					event.start_time()
@@ -392,7 +390,7 @@ impl Widget for &mut Application {
 					Line::from(event.title()),
 					Line::from("")
 				])
-				.flatten() //will flatten [["00:00","event1"],["01:00",event2]]
+				.flatten() //will flatten [["00:00","event1",""],["01:00","event2",""]]
 				.collect();
 			let item_list = List::new(event_titles)
 				.block(day_block)

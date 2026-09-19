@@ -4,6 +4,7 @@ use std::collections::HashMap;
 use std::time::{SystemTime,Duration};
 use chrono::{DateTime,Utc,Datelike,Local,NaiveDate,TimeZone};
 use uuid::Uuid;
+use std::error::Error;
 
 #[derive(Debug,PartialEq)]
 pub enum ICComponentType {
@@ -169,7 +170,10 @@ impl ICalendar {
 				}
 				return Ok(component);
 			}else {
+				let value = value.replace("\\,",",");//unescape any commas
+				//add the property
 				component.properties.insert(name.into(),value.into());
+				//if the property has some parameters, add them as PROPERTY_PARAMETER=value
 				for (key,value) in params {
 					component.properties.insert(name.to_string()+"_"+key,value.to_string());
 				}
@@ -224,7 +228,21 @@ impl ICalendar {
 }
 
 impl CombinedCalendar {
-	pub fn load_from_strings(strings: Vec<(&str,&str)>) -> io::Result<CombinedCalendar>{
+	pub fn load_from_urls<T: AsRef<str>>(urls: Vec<(T,T)>) -> Result<CombinedCalendar,Box<dyn Error>>{
+		println!("fetching calendars...");
+		let request_client = reqwest::blocking::Client::new();
+		let mut raw_calendars = vec![];
+		for (calendar_name,calendar_url) in urls {
+			let raw_calendar_text = request_client
+				.get(calendar_url.as_ref())
+				.send()?
+				.text()?;
+			raw_calendars.push((calendar_name.as_ref().to_owned(),raw_calendar_text));
+		}
+		println!("loading calendars...");
+		Ok(CombinedCalendar::load_from_strings(raw_calendars)?)
+	}
+	pub fn load_from_strings<T: AsRef<str>>(strings: Vec<(T,T)>) -> io::Result<CombinedCalendar>{
 		//====== prepare the combined calendar ======
 		let mut combined_calendar = CombinedCalendar {
 			calendars: Vec::new(),
@@ -247,7 +265,7 @@ impl CombinedCalendar {
 				date_event_list.push(event);
 			}
 		}
-		println!("{:#?}",combined_calendar.events);
+		//println!("{:#?}",combined_calendar.events);
 		Ok(combined_calendar)
 	}
 	pub fn get_events_for_date(&self,date: impl Datelike) -> Vec<CalendarEvent>{
@@ -322,5 +340,8 @@ impl CalendarEvent {
 	}
 	pub fn end_time(&self) -> Option<DateTime<Local>> {
 		self.end_time.clone()
+	}
+	pub fn parent_calendar_name(&self) -> String {
+		self.parent_calendar_name.clone()
 	}
 }
