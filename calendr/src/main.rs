@@ -45,19 +45,12 @@ fn main() -> Result<(),()>{
 		.flatten()
 		.inspect_err(|e| eprintln!("Error loading calendar config: {e}"))
 		.unwrap_or_default();
-	//====== grab the calendars ======
-	let calendar_urls: Vec<_> = env::args()
-		.skip(1)
-		.collect();
-	if calendar_urls.len() == 0 {
-		eprintln!("please provide ics urls as command line arguments");
-		return Err(());
-	}
-	//====== fetch and load each one ======
-	let calendar_urls = calendar_urls
+    dbg!{&calendar_config};
+	//====== fetch and load each calendar ======
+	let calendar_urls = calendar_config
+        .calendars()
 		.into_iter()
-		.enumerate()
-		.map(|(n,url)| (format!("Url calendar {}",n),url))
+		.map(|e| (e.name(),e.url()))
 		.collect();
 	let calendar = match CombinedCalendar::load_from_urls(calendar_urls){
 		Ok(c) => c,
