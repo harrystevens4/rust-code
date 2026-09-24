@@ -7,6 +7,7 @@ use uuid::Uuid;
 use std::error::Error;
 use std::cmp::{min,max};
 use std::cmp::{Ord,Ordering,PartialOrd,PartialEq,Eq};
+use crate::fmt_err;
 
 #[derive(Debug,PartialEq)]
 pub enum ICComponentType {
@@ -290,7 +291,7 @@ impl CombinedCalendar {
 		for (calendar_name,calendar_url) in urls {
 			let raw_calendar_text = request_client
 				.get(calendar_url.as_ref())
-				.send()?
+				.send().map_err(|e| fmt_err!("unable to connect to {:?}",calendar_url.as_ref()))?
 				.text()?;
 			raw_calendars.push((calendar_name.as_ref().to_owned(),raw_calendar_text));
 		}

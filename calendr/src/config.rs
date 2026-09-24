@@ -43,7 +43,12 @@ impl CalendarConfig {
             .into_iter()
             .map(|section| CalendarInfo {
                 name: section.name().to_string(),
-                url: section.properties().get("url").map(String::from),
+                url: section
+                    .properties()
+                    .get("url")
+                    .map(String::from)
+                    .map(|s| if s.is_empty() {None} else {Some(s)})
+                    .flatten(),
             })
             .collect::<Vec<_>>();
         //build our calendar config

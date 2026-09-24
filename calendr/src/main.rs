@@ -3,17 +3,30 @@ mod config;
 mod tui;
 use std::env;
 use std::io;
+use std::{fmt::{Debug,Display,Formatter},fmt};
 use std::path::{PathBuf,Path};
 use std::error::Error;
 use icalendar::CombinedCalendar;
 use config::{ApplicationConfig,CalendarConfig};
 use ratatui::style::Style;
 use crate::tui::Application;
+//use std::process::{ExitCode,ExitCode::FAILURE,ExitCode::SUCCESS};
 
 const STYLE_SELECTED_TEXT: Style = Style::new().white().on_red();
 const STYLE_HIGHLIGHTED_TEXT: Style = Style::new().underlined();
 const DATE_FORMAT_STRING: &str = "%a - %d/%m/%Y";
 const TIME_FORMAT_STRING: &str = "%H:%M";
+
+//if io::Error could impl From<String> that would be incredible
+#[macro_export]
+macro_rules! fmt_err {
+    ($($arg:tt)*) => {
+        std::io::Error::other(std::fmt::format(format_args!($($arg)*)))
+    }
+}
+
+//literalt just io::Error but the debug formatter is the default formatter
+struct PlainError (io::Error);
 
 pub trait PathConcat {
 	//why doesnt pathbuf impl Add<&Path> ????
@@ -29,7 +42,23 @@ pub trait PathConcat {
 impl PathConcat for Path {}
 impl PathConcat for PathBuf {}
 
-fn main() -> Result<(),()>{
+impl From<io::Error> for PlainError {
+    fn from(val: io::Error) -> PlainError {
+        PlainError(val)
+    }
+}
+impl Debug for PlainError {
+    fn fmt(&self, f: &mut Formatter<'_>) -> Result<(), fmt::Error>{
+        std::fmt::Display::fmt(&self.0,f)
+    }
+}
+impl Display for PlainError {
+    fn fmt(&self, f: &mut Formatter<'_>) -> Result<(), fmt::Error>{
+        std::fmt::Display::fmt(&self.0,f)
+    }
+}
+
+fn main() -> Result<(),PlainError> {
 	//====== load config files if they exist ======
 	let application_config = env::home_dir()
 		.ok_or(io::Error::other("User's home directory not found"))
@@ -45,25 +74,27 @@ fn main() -> Result<(),()>{
 		.flatten()
 		.inspect_err(|e| eprintln!("Error loading calendar config: {e}"))
 		.unwrap_or_default();
-    dbg!{&calendar_config};
 	//====== fetch and load each calendar ======
 	let calendar_urls = calendar_config
         .calendars()
 		.into_iter()
-		.map(|e| (e.name(),e.url()))
-		.collect();
-	let calendar = match CombinedCalendar::load_from_urls(calendar_urls){
-		Ok(c) => c,
-		Err(e) => {
-			eprintln!("Error loading calendars: {e}");
-			return Err(());
-		}
-	};
+		.map(|e|{
+            let name = e.name();
+            if let Some(url) = e.url(){
+                Ok((name,url))
+            }else {
+                Err(fmt_err!("no url for calendar {:?}",name))
+            }
+        })
+		.collect::<Result<Vec<_>,_>>();
+    //check for any errors
+    let calendar_urls = calendar_urls
+        .map_err(|e| fmt_err!("Error reading calendars config file: {e}"))?;
+	let calendar = CombinedCalendar::load_from_urls(calendar_urls)
+        .map_err(|e| fmt_err!("Error loading calendars: {e}"))?;
 	//====== ratatui ======
 	let mut application = Application::new(calendar);
-	if let Err(e) = ratatui::run(move |terminal| application.tui_loop(terminal)){
-		eprintln!("Error in tui loop: {e}");
-		return Err(());
-	}
-	Ok(())
+	ratatui::run(move |terminal| application.tui_loop(terminal))
+        .map_err(|e| fmt_err!("Error in tui loop: {e}"))?;
+    Ok(())
 }
