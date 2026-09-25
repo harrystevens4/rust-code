@@ -29,20 +29,6 @@ macro_rules! fmt_err {
 //literalt just io::Error but the debug formatter is the default formatter
 struct PlainError (io::Error);
 
-pub trait PathConcat {
-	//why doesnt pathbuf impl Add<&Path> ????
-	fn concat<T>(self,other: T) -> PathBuf
-	where Self: AsRef<Path> + Sized, T: AsRef<Path> {
-		let mut new_path = PathBuf::new();
-		new_path.push(self);
-		new_path.push(other);
-		new_path
-	}
-}
-
-impl PathConcat for Path {}
-impl PathConcat for PathBuf {}
-
 impl From<io::Error> for PlainError {
     fn from(val: io::Error) -> PlainError {
         PlainError(val)
@@ -63,14 +49,14 @@ fn main() -> Result<(),PlainError> {
 	//====== load config files if they exist ======
 	let application_config = env::home_dir()
 		.ok_or(io::Error::other("User's home directory not found"))
-		.map(|d| d.concat(".config/calendr/config.ini"))
+		.map(|d| d.join(".config/calendr/config.ini"))
 		.map(|d| ApplicationConfig::load(d))
 		.flatten()
 		.inspect_err(|e| eprintln!("Error loading application config: {e}"))
 		.unwrap_or_default(); //its not that deep if we cant load the config so just use the default one
 	let calendar_config = env::home_dir()
 		.ok_or(io::Error::other("User's home directory not found"))
-		.map(|d| d.concat(".config/calendr/calendars.ini"))
+		.map(|d| d.join(".config/calendr/calendars.ini"))
 		.map(|d| CalendarConfig::load(d))
 		.flatten()
 		.inspect_err(|e| eprintln!("Error loading calendar config: {e}"))
