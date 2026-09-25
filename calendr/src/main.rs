@@ -2,11 +2,12 @@ mod icalendar;
 mod config;
 mod tui;
 use std::env;
+use std::fs;
 use std::io;
 use std::{fmt::{Debug,Display,Formatter},fmt};
 use std::path::{PathBuf,Path};
 use std::error::Error;
-use icalendar::CombinedCalendar;
+use icalendar::{CombinedCalendar,ICalendar,CalendarEvent};
 use config::{ApplicationConfig,CalendarConfig};
 use ratatui::style::Style;
 use crate::tui::Application;
@@ -75,7 +76,9 @@ fn main() -> Result<(),PlainError> {
 		.inspect_err(|e| eprintln!("Error loading calendar config: {e}"))
 		.unwrap_or_default();
 	//====== fetch and load each calendar ======
-	let calendar_urls = calendar_config
+	//pipeline from urls to calendar
+	println!("loading calendars...");
+	let calendar = calendar_config
         .calendars()
 		.into_iter()
 		.map(|e|{
@@ -86,12 +89,39 @@ fn main() -> Result<(),PlainError> {
                 Err(fmt_err!("no url for calendar {:?}",name))
             }
         })
-		.collect::<Result<Vec<_>,_>>();
-    //check for any errors
-    let calendar_urls = calendar_urls
-        .map_err(|e| fmt_err!("Error reading calendars config file: {e}"))?;
-	let calendar = CombinedCalendar::load_from_urls(calendar_urls)
-        .map_err(|e| fmt_err!("Error loading calendars: {e}"))?;
+		.collect::<Result<Vec<_>,_>>()
+    	//check for any errors
+        .map_err(|e| fmt_err!("Error reading calendars config file: {e}"))?
+		.into_iter()
+		//try loading from url
+		.map(|(n,u)| match ICalendar::load_from_url(&n,&u){
+			Ok(c) => Ok(c),
+			//check for cache location
+			Err(e1) => match application_config.calendar_storage_dir(){
+				//if we cant load from url try from cache
+				Some(d) => match fs::read_to_string(d.join(&n)){
+					Ok(s) => ICalendar::load_from_str(n,s),
+					//if we cant load from cache its an epic fail
+					Err(e2) => Err(fmt_err!("Error loading {n:?} from url: {e1}\n followed by error loading from cache: {e2}")),
+				},
+				None => Err(fmt_err!("Error loading {n:?} from url: {e1}\nNo fallback cache dir available"))
+			}
+		})
+		.collect::<Result<CombinedCalendar,_>>()
+		.map_err(|e| fmt_err!("Error loading calendar: {e}"))?;
+	//====== cache the calendars ======
+	if let Some(calendar_dir) = application_config.calendar_storage_dir(){
+		println!("caching downloads...");
+		fs::create_dir_all(&calendar_dir)
+			.map_err(|e| fmt_err!("mkdir({calendar_dir:?}): {e}"))?;
+		calendar
+			.calendars()
+			.into_iter()
+			.map(|c| fs::write(calendar_dir.join(c.name()),c.as_ics())
+				.map_err(|e| fmt_err!("Error caching calendars: {e}"))
+			)
+			.collect::<Result<Vec<_>,_>>()?;
+	}
 	//====== ratatui ======
 	let mut application = Application::new(calendar);
 	ratatui::run(move |terminal| application.tui_loop(terminal))
