@@ -208,7 +208,8 @@ impl ICalendar {
 		let mut component_type: Option<ICComponentType> = None;
 		//====== parse ======
 		loop {
-			let Some(line) = lines.peek() else {break};
+			let Some(line) = lines.peek()
+			else {Err(fmt_err!("Unexpected end of file"))?};
 			//====== process line ======
 			let Some((name_and_params,value)) = line.split_once(":")
 			else {
@@ -249,7 +250,6 @@ impl ICalendar {
 			//consume line
 			let _ = lines.next();
 		}
-		todo!();
 	}
 	pub fn name(&self) -> String {
 		self.name.clone()
@@ -302,7 +302,9 @@ impl ICalendar {
 			.get(url.as_ref())
 			.send().map_err(|e| fmt_err!("unable to connect to {:?}",url.as_ref()))?
 			.text()?;
-		Ok(ICalendar::load_from_str(name,raw_calendar_text)?)
+		Ok(ICalendar::load_from_str(&name,raw_calendar_text)
+			.map_err(|e| fmt_err!("Error parsing calendar {:?}: {e}",name.as_ref()))?
+		)
 	}
 }
 
