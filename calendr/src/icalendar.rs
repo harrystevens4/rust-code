@@ -1,5 +1,5 @@
 use std::io;
-use std::iter::Peekable;
+use std::iter::{Peekable,FromIterator};
 use std::collections::HashMap;
 use std::time::{SystemTime,Duration};
 use chrono::{DateTime,Utc,Datelike,Local,NaiveDate,TimeZone,Timelike,TimeDelta,Days};
@@ -9,7 +9,7 @@ use std::cmp::{min,max};
 use std::cmp::{Ord,Ordering,PartialOrd,PartialEq,Eq};
 use crate::fmt_err;
 
-#[derive(Debug,PartialEq)]
+#[derive(Debug,PartialEq,Clone)]
 pub enum ICComponentType {
 	Event,
 	Alarm,
@@ -24,7 +24,7 @@ pub enum ICComponentType {
 }
 
 //this is a component in an ICS file
-#[derive(Debug)]
+#[derive(Debug,Clone)]
 struct ICComponent {
 	component_type: ICComponentType,
 	properties: HashMap<String,String>,
@@ -52,10 +52,11 @@ pub struct CombinedCalendar {
 }
 
 //this represents a single ICS file
-#[derive(Debug)]
+#[derive(Debug,Clone)]
 pub struct ICalendar {
 	root_component: ICComponent, //like VCALENDAR for a full calendar or VEVENT for a single event
 	name: String,
+	raw: String,
 }
 
 pub trait ClampDateToDay {
@@ -119,6 +120,16 @@ impl From<&str> for ICComponentType {
 	}
 }
 
+impl FromIterator<ICalendar> for CombinedCalendar {
+	fn from_iter<T: IntoIterator<Item = ICalendar>>(iter: T) -> CombinedCalendar {
+		let mut combined_calendar = CombinedCalendar::new();
+		for calendar in iter {
+			combined_calendar.add_calendar(calendar);
+		}
+		combined_calendar
+	}
+}
+
 fn iso_to_local_time(iso_time: &str) -> Option<DateTime<Local>> {
 	//====== process timestamp ======
 	let mut timestamp = iso_time
@@ -170,8 +181,8 @@ fn get_date_hash(date: impl Datelike) -> usize {
 }
 
 impl ICalendar {
-	pub fn load_from_str(name: impl AsRef<str>, data: impl AsRef<str>) -> io::Result<ICalendar> {
-		let data = data.as_ref();
+	pub fn load_from_str(name: impl AsRef<str>, raw_data: impl AsRef<str>) -> io::Result<ICalendar> {
+		let data = raw_data.as_ref();
 		//remove trailing CRLF
 		let data = data.trim_end_matches("\r\n");
 		//unfold continuations
@@ -184,6 +195,7 @@ impl ICalendar {
 		Ok(ICalendar {
 			root_component,
 			name: name.as_ref().into(),
+			raw: raw_data.as_ref().to_string(),
 		})
 	}
 	fn parse<'a, I: Iterator<Item = &'a str>>(lines: &mut Peekable<I>) -> io::Result<ICComponent> {
@@ -281,9 +293,26 @@ impl ICalendar {
 		}
 		events
 	}
+	pub fn as_ics(&self) -> String {
+		self.raw.clone()
+	}
+	pub fn load_from_url<T: AsRef<str>>(name: T, url: T) -> Result<ICalendar,Box<dyn Error>>{
+		let request_client = reqwest::blocking::Client::new();
+		let raw_calendar_text = request_client
+			.get(url.as_ref())
+			.send().map_err(|e| fmt_err!("unable to connect to {:?}",url.as_ref()))?
+			.text()?;
+		Ok(ICalendar::load_from_str(name,raw_calendar_text)?)
+	}
 }
 
 impl CombinedCalendar {
+	pub fn new() -> CombinedCalendar {
+		CombinedCalendar {
+			calendars: Vec::new(),
+			events: HashMap::new(),
+		}
+	}
 	pub fn load_from_urls<T: AsRef<str>>(urls: Vec<(T,T)>) -> Result<CombinedCalendar,Box<dyn Error>>{
 		println!("fetching calendars...");
 		let request_client = reqwest::blocking::Client::new();
@@ -336,6 +365,16 @@ impl CombinedCalendar {
 				let index = l.binary_search(&event).unwrap_or_else(|e| e);
 				l.insert(index,event.clone());
 			});
+		}
+	}
+	pub fn calendars(&self) -> Vec<ICalendar> {
+		self.calendars.clone()
+	}
+	pub fn add_calendar(&mut self, calendar: ICalendar){
+		let events = calendar.get_calendar_events();
+		self.calendars.push(calendar);
+		for event in events {
+			self.add_new_event(event);
 		}
 	}
 }
