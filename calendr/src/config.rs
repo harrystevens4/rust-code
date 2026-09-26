@@ -16,6 +16,7 @@ calendar_dir=/home/john/.local/share/calendr/
 date_format_string="%a - %d/%m/%Y"
 time_format_string="%H:%M"
 default_view_size=7
+wrap_calendar_view_events=true
 */
 
 use std::path::Path;
@@ -48,6 +49,7 @@ pub struct ApplicationConfig {
 	date_format_string: String,
 	time_format_string: String,
 	default_view_size: usize,
+	wrap_calendar_view_events: bool,
 }
 
 impl Default for ApplicationConfig {
@@ -59,6 +61,7 @@ impl Default for ApplicationConfig {
 			date_format_string: DATE_FORMAT_STRING.to_string(),
 			time_format_string: TIME_FORMAT_STRING.to_string(),
 			default_view_size: 3,
+			wrap_calendar_view_events: false,
 		}
 	}
 }
@@ -67,6 +70,27 @@ impl Default for CalendarConfig {
 		CalendarConfig {
             calendars: vec![],
 		}
+	}
+}
+
+fn parse_bool(value: impl AsRef<str>) -> io::Result<bool> {
+	//yeah yeah yeah .as_ascii_lower() exists but this is more fun
+ 	match value.as_ref() {
+		"true"
+		| "True"
+		| "TRUE"
+		| "t"
+		| "T"
+		| "1" => Ok(true),
+		
+		"false"
+		| "False"
+		| "FALSE"
+		| "f"
+		| "F"
+		| "0" => Ok(false),
+
+		_ => Err(fmt_err!("Error parsing bool from {:?}",value.as_ref())),
 	}
 }
 
@@ -110,6 +134,7 @@ impl ApplicationConfig {
 					for (key,value) in section.properties() { match key.as_str() {
 						"date_format_string" => config.date_format_string = value.into(),
 						"time_format_string" => config.time_format_string = value.into(),
+						"wrap_calendar_view_events" => config.wrap_calendar_view_events = parse_bool(value)?,
 						"default_view_size" => config.default_view_size = value
 							.parse()
 							.map_err(|e| fmt_err!("Error parsing default_view_size: {e}"))?,
@@ -120,10 +145,7 @@ impl ApplicationConfig {
                 "storage" => {
 					for (key,value) in section.properties() { match key.as_str() {
 						"calendar_dir" => config.calendar_storage_dir = Some(value.into()),
-						"cache_web_calendars" => config.cache_web_calendars = match value.as_str() {
-							"True" | "true" => true,
-							_ => false,
-						},
+						"cache_web_calendars" => config.cache_web_calendars = parse_bool(value)?,
 						_ => Err(fmt_err!("Unknown key {:?} in section {:?}",key,section.name()))?
 					}}
 				},
@@ -144,6 +166,9 @@ impl ApplicationConfig {
 	}
 	pub fn default_view_size(&self) -> usize {
 		self.default_view_size
+	}
+	pub fn wrap_calendar_view_events(&self) -> bool {
+		self.wrap_calendar_view_events
 	}
 }
 

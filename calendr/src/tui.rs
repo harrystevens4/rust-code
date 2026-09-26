@@ -9,7 +9,7 @@ use ratatui::{
 	buffer::Buffer,
 	layout::{Rect,Constraint,Direction,Layout},
 	widgets::{Block,Paragraph,Widget,Borders,List,ListState,StatefulWidget,Wrap},
-	text::Line,
+	text::{Line,Text},
 	symbols::{border},
 };
 use std::default::Default;
@@ -137,6 +137,18 @@ impl From<Months> for DaysOrMonths {
 	fn from(months: Months) -> DaysOrMonths {
 		DaysOrMonths::Months(months)
 	}
+}
+
+fn wrap_text(text: impl AsRef<str>, width: usize) -> String {
+	text
+		.as_ref()
+		.chars()
+		.enumerate()
+		.map(|(i,c)| 
+			if (i+1) % width == 0 {String::from(c) + "\n"}
+			else {String::from(c)}
+		)
+		.collect()
 }
 
 impl Application {
@@ -381,20 +393,28 @@ impl Application {
 			let list_item_width = calendar_day_layout[i].width as isize;
 			let events = self.calendar
 				.get_events_for_date(date);
+			//calculate wrap
+			let text_wrap_width = if self.config.wrap_calendar_view_events(){
+				calendar_day_layout[i].width as usize - 1
+			}else {
+				//if your terminal is this big you have other things to worry about
+				//than if this text will wrap prematurely
+				usize::MAX
+			};
 			//for each hour fetch events
 			let event_titles: Vec<_> = events
 				.iter()
 				.map(|event| vec![
-					Line::from(format!("--- {} {}",
+					Text::from(format!("--- {} {}",
 						self.format_event_timespan(&event,date),
 						"-".repeat(max(list_item_width-12,0) as usize)
 					)),
-					Line::styled(
-						event.title(),
+					Text::styled(
+						wrap_text(event.title(),text_wrap_width),
 						Style::default()
 							.fg(event.parent_calendar_name().derive_color())
 					),
-					Line::from("")
+					Text::from("")
 				])
 				//will flatten [["00:00 - 01:00","event1",""],["01:00 - 02:00","event2",""]]
 				.flatten()
