@@ -269,7 +269,7 @@ impl Application {
 	fn render_date_selector(&mut self, area: Rect, buf: &mut Buffer){
 		let date_selector_block = Block::bordered()
 			.title(Line::from(" Date ").centered())
-			.title_bottom(Line::from(" n to switch to today ━━━ [ and ] to switch months").centered())
+			.title_bottom(Line::from(" n to switch to today ━━━ [ and ] to switch months ").centered())
 			.border_set(border::THICK);
 		let date_selector_block_rect = date_selector_block.inner(area);
 		date_selector_block.render(area,buf);
