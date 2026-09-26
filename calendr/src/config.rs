@@ -15,6 +15,7 @@ calendar_dir=/home/john/.local/share/calendr/
 [ui]
 date_format_string="%a - %d/%m/%Y"
 time_format_string="%H:%M"
+default_view_size=7
 */
 
 use std::path::Path;
@@ -24,6 +25,7 @@ use std::env;
 use std::path::PathBuf;
 use iniconfig::{ConfigFile};
 use std::default::Default;
+use crate::fmt_err;
 
 const DATE_FORMAT_STRING: &str = "%a - %d/%m/%Y";
 const TIME_FORMAT_STRING: &str = "%H:%M";
@@ -45,6 +47,7 @@ pub struct ApplicationConfig {
 	calendar_storage_dir: Option<PathBuf>,
 	date_format_string: String,
 	time_format_string: String,
+	default_view_size: usize,
 }
 
 impl Default for ApplicationConfig {
@@ -55,6 +58,7 @@ impl Default for ApplicationConfig {
 				.map(|h| h.join(".local/share/calendr")),
 			date_format_string: DATE_FORMAT_STRING.to_string(),
 			time_format_string: TIME_FORMAT_STRING.to_string(),
+			default_view_size: 3,
 		}
 	}
 }
@@ -97,50 +101,37 @@ impl CalendarConfig {
 impl ApplicationConfig {
 	pub fn load(path: impl AsRef<Path>) -> io::Result<ApplicationConfig> {
 		let config_contents = fs::read_to_string(path)?;
-		let config = ConfigFile::from(config_contents.as_str());
-		let mut application_config = Self::default();
-		for section in config {
+		let config_file = ConfigFile::from(config_contents.as_str());
+		let mut config = Self::default();
+		for section in config_file {
             match section.name(){
+				//====== ui section ======
                 "ui" => {
-					//====== date format string ======
-					if let Some(date_format_string) = section
-						.properties()
-						.get("date_format_string")
-						.map(String::from)
-					{
-						application_config.date_format_string = date_format_string;
-					}
-					//====== date format string ======
-					if let Some(time_format_string) = section
-						.properties()
-						.get("time_format_string")
-						.map(String::from)
-					{
-						application_config.time_format_string = time_format_string;
-					}
+					for (key,value) in section.properties() { match key.as_str() {
+						"date_format_string" => config.date_format_string = value.into(),
+						"time_format_string" => config.time_format_string = value.into(),
+						"default_view_size" => config.default_view_size = value
+							.parse()
+							.map_err(|e| fmt_err!("Error parsing default_view_size: {e}"))?,
+						_ => Err(fmt_err!("Unknown key {:?} in section {:?}",key,section.name()))?
+					}}
 				},
+				//====== storage section ======
                 "storage" => {
-					//====== calendar dir ======
-					if let Some(calendar_dir) = section
-						.properties()
-						.get("calendar_dir")
-						.map(PathBuf::from)
-					{
-						application_config.calendar_storage_dir = Some(calendar_dir);
-					}
-					//====== cache status ======
-					if let Some(cache_status) = section
-						.properties()
-						.get("cache_web_calendars")
-						.map(|s| if s.to_ascii_lowercase() == "true" {true} else {false})
-					{
-						application_config.cache_web_calendars = cache_status
-					}
+					for (key,value) in section.properties() { match key.as_str() {
+						"calendar_dir" => config.calendar_storage_dir = Some(value.into()),
+						"cache_web_calendars" => config.cache_web_calendars = match value.as_str() {
+							"True" | "true" => true,
+							_ => false,
+						},
+						_ => Err(fmt_err!("Unknown key {:?} in section {:?}",key,section.name()))?
+					}}
 				},
-				_ => ()
+				//====== unknown section ======
+				_ => Err(fmt_err!("Unknown section {:?}",section.name()))?
             }
 		}
-		Ok(application_config)
+		Ok(config)
 	}
 	pub fn calendar_storage_dir(&self) -> Option<PathBuf> {
 		self.calendar_storage_dir.clone()
@@ -150,6 +141,9 @@ impl ApplicationConfig {
 	}
 	pub fn time_format(&self) -> String {
 		self.time_format_string.clone()
+	}
+	pub fn default_view_size(&self) -> usize {
+		self.default_view_size
 	}
 }
 

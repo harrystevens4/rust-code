@@ -142,16 +142,19 @@ impl From<Months> for DaysOrMonths {
 impl Application {
 	//============ general calendar control functions ============
 	pub fn new(calendar: CombinedCalendar, config: ApplicationConfig) -> Application {
-		let application = Application {
+		//create our awesome application
+		let mut application = Application {
 			exit: false,
 			selected_window: SelectedWindow::CalendarDisplay,
-			calendar_view_size: 3,
+			calendar_view_size: 0,
 			selected_event: Some(0),
 			selected_date: Local::now().date_naive(),
 			calendar_scroll_offset: 0,
 			calendar: calendar,
-			config: config,
+			config: config.clone(),
 		};
+		//this does a bounds check rather than trusting the user
+		application.set_calendar_view_size(config.default_view_size());
 		application
 	}
 	pub fn tui_loop(&mut self, terminal: &mut DefaultTerminal) -> Result<(),Box<dyn Error>>{
@@ -237,8 +240,7 @@ impl Application {
 	}
 	fn set_calendar_view_size(&mut self, new_size: usize){
 		//min and max bounds
-		if new_size < 1 || new_size > 7 {return}
-		self.calendar_view_size = new_size;
+		self.calendar_view_size = max(min(new_size,7),1);
 		//make sure the selected date is still visible
 		self.calendar_scroll_offset = min(
 			self.calendar_scroll_offset as isize,
