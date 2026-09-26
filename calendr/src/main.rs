@@ -86,7 +86,10 @@ fn main() -> Result<(),PlainError> {
 			Err(e1) => match application_config.calendar_storage_dir(){
 				//if we cant load from url try from cache
 				Some(d) => match fs::read_to_string(d.join(&n)){
-					Ok(s) => ICalendar::load_from_str(n,s),
+					Ok(s) => {
+						println!("Falling back on cached calendar {n:?} due to error: {e1}");
+						ICalendar::load_from_str(n,s)
+					},
 					//if we cant load from cache its an epic fail
 					Err(e2) => Err(fmt_err!("Error loading {n:?} from url: {e1}\n followed by error loading from cache: {e2}")),
 				},
