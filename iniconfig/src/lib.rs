@@ -84,8 +84,16 @@ fn is_property(line: &str) -> bool {
 	line.contains('=')
 }
 fn extract_property(line: &str) -> (String,String){
-	let result = line.split('=').take(2).collect::<Vec<_>>();
-	(result[0].trim().into(), result[1].trim().into())
+	//split it by '='
+	let Some((key,value)) = line.split_once('=')
+	//if no '=' found then just return the whole line as the key
+	else {return (String::from(line),String::new())};
+	//trim whitespace
+	let key = key.trim();
+	let value = value.trim();
+	//process quotation marks
+	let value = value.trim_matches('"');
+	(key.to_string(),value.to_string())
 }
 fn crop_comments<'a>(line: &'a str) -> &'a str {
 	line.split('#').next().unwrap()
