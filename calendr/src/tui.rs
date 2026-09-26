@@ -82,6 +82,8 @@ trait DateOffsetString<U: Datelike + Copy>: Datelike + Copy {
 					String::from("Next Week")
 				}else if other.month() == self.month() && other.year() == self.year(){
 					String::from("This Month")
+				}else if other.month() == self.month()+1 && other.year() == self.year(){
+					String::from("Next Month")
 				}else if other.year() == self.year(){
 					String::from("This Year")
 				}else if other.year() == self.year()+1 {
