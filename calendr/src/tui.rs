@@ -9,7 +9,7 @@ use ratatui::{
 	buffer::Buffer,
 	layout::{Rect,Constraint,Direction,Layout},
 	widgets::{Block,Paragraph,Widget,Borders,List,ListState,StatefulWidget,Wrap},
-	text::{Line,Text},
+	text::{Line,Text,Span},
 	symbols::{border},
 };
 use std::default::Default;
@@ -30,6 +30,7 @@ pub struct Application {
 	calendar_scroll_offset: usize, //how far to the right the selected day is
 	calendar: CombinedCalendar,
 	config: ApplicationConfig,
+	filter: Option<String>,
 }
 //used in increase_selected_date_by() and decrease_selected_date_by()
 //for a polymorphic duration type that can represent days or months
@@ -166,6 +167,7 @@ impl Application {
 			calendar_scroll_offset: 0,
 			calendar: calendar,
 			config: config.clone(),
+			filter: None,
 		};
 		//this does a bounds check rather than trusting the user
 		application.set_calendar_view_size(config.default_view_size());
@@ -182,31 +184,35 @@ impl Application {
 		self.exit = true;
 	}
 	fn handle_events(&mut self) -> io::Result<()>{
+		use KeyCode::*;
+		let filter = self.filter.is_some();
 		match crossterm::event::read()?{
 			Event::Key(key_event) if key_event.kind == KeyEventKind::Press => {
-				match key_event.code {
-					KeyCode::Char('q') => self.exit(),
-					KeyCode::Char('=') => self.increase_calendar_view_size(1),
-					KeyCode::Char('-') => self.decrease_calendar_view_size(1),
-					KeyCode::Char('n') => self.set_selected_date(Local::now()),
-					KeyCode::Char('[') => self.decrease_selected_date_by(Months::new(1)),
-					KeyCode::Char(']') => self.increase_selected_date_by(Months::new(1)),
-					KeyCode::Down =>
-						if self.selected_window == SelectedWindow::CalendarDisplay {
-							self.select_next_event();
-						}else {
-						},
-					KeyCode::Up =>
-						if self.selected_window == SelectedWindow::CalendarDisplay {
-							self.select_prev_event()
-						}else {
-						},
-					KeyCode::Right => self.scroll_calendar_right(),
-					KeyCode::Left => self.scroll_calendar_left(),
-					KeyCode::Tab => self.selected_window.next(),
-					_ => (),
-				}
-			},
+			match key_event.code {
+				Char('q') if !filter => self.exit(),
+				Char('=') if !filter => self.increase_calendar_view_size(1),
+				Char('-') if !filter => self.decrease_calendar_view_size(1),
+				Char('n') if !filter => self.set_selected_date(Local::now()),
+				Char('[') if !filter => self.decrease_selected_date_by(Months::new(1)),
+				Char(']') if !filter => self.increase_selected_date_by(Months::new(1)),
+				Char('/') => self.toggle_filter(),
+				Char(c) => self.filter_add_char(c),
+				Backspace => self.filter_remove_char(),
+				Down =>
+					if self.selected_window == SelectedWindow::CalendarDisplay {
+						self.select_next_event();
+					}else {
+					},
+				Up =>
+					if self.selected_window == SelectedWindow::CalendarDisplay {
+						self.select_prev_event()
+					}else {
+					},
+				Right => self.scroll_calendar_right(),
+				Left => self.scroll_calendar_left(),
+				Tab => self.selected_window.next(),
+				_ => (),
+			}},
 			_ => (),
 		}
 		Ok(())
@@ -271,6 +277,22 @@ impl Application {
 		match time.into() {
 			DaysOrMonths::Days(days) => self.set_selected_date(self.selected_date - days),
 			DaysOrMonths::Months(months) => self.set_selected_date(self.selected_date - months),
+		}
+	}
+	fn toggle_filter(&mut self){
+		self.filter = match self.filter {
+			Some(_) => None,
+			None => Some(String::new()),
+		};
+	}
+	fn filter_add_char(&mut self, c: char){
+		if let Some(filter) = &mut self.filter {
+			filter.push(c);
+		}
+	}
+	fn filter_remove_char(&mut self){
+		if let Some(filter) = &mut self.filter {
+			filter.pop();
 		}
 	}
 	//============ rendering functions ============
@@ -451,6 +473,40 @@ impl Application {
 			StatefulWidget::render(item_list,calendar_day_layout[i],buf,&mut list_state);
 		}
 	}
+	fn render_filter(&mut self, area: Rect, buf: &mut Buffer){
+		//grab the filter or "" if it is empty
+		let filter = self.filter
+			.clone()
+			.unwrap_or_default();
+		//take the last `width` characters to emulate scrolling
+		let filter = filter.chars()
+			.skip(filter.len().saturating_sub(area.width.saturating_sub(8+1) as usize))
+			.collect::<String>();
+		//calculate padding
+		let padding_len = (area.width as usize).saturating_sub(8+filter.len()+1);
+		//create the line
+		let filter_line = Line::from(vec![
+			//the word filter
+			Span::from("Filter: "),
+			//the filter text
+			Span::styled(
+				format!("{}",filter),
+				Style::default().underlined()
+			),
+			//blinking cursor
+			Span::styled(
+				" ",
+				Style::default().underlined().reversed()
+			),
+			//underline for the rest of the line
+			Span::styled(
+				format!("{}"," ".repeat(padding_len)),
+				Style::default().underlined()
+			),
+		]);
+		Paragraph::new(filter_line)
+			.render(area,buf);
+	}
 }
 impl Widget for &mut Application {
 	fn render(self, area: Rect, buf: &mut Buffer){
@@ -469,11 +525,22 @@ impl Widget for &mut Application {
 				Constraint::Percentage(75),
 			])
 		);
+		let [calendar_display_rect,filter_rect] = calendar_display_rect.layout(&Layout::default()
+			.direction(Direction::Vertical)
+			.constraints(vec![
+				Constraint::Percentage(100),
+				Constraint::Min(if self.filter.is_some() {1} else {0}),
+			])
+		);
 		//====== date selector ======
 		self.render_date_selector(top_rect,buf);
 		//====== event info ======
 		self.render_event_info(event_info_rect,buf);
 		//====== calendar display ======
 		self.render_calendar_display(calendar_display_rect,buf);
+		//====== filter ======
+		if self.filter.is_some(){
+			self.render_filter(filter_rect,buf);
+		}
 	}
 }
