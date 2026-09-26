@@ -1,4 +1,5 @@
 use std::cmp::{min,max};
+use crate::config::ApplicationConfig;
 use ratatui::{
 	DefaultTerminal,
 	Frame,
@@ -13,7 +14,7 @@ use ratatui::{
 };
 use std::default::Default;
 use chrono::{Local,NaiveDate,Datelike,Days,Months,TimeDelta};
-use crate::{DATE_FORMAT_STRING,TIME_FORMAT_STRING,STYLE_SELECTED_TEXT,STYLE_HIGHLIGHTED_TEXT};
+use crate::{STYLE_SELECTED_TEXT,STYLE_HIGHLIGHTED_TEXT};
 use std::error::Error;
 use std::ops::Sub;
 use crate::icalendar::{CombinedCalendar,CalendarEvent,ClampDateToDay};
@@ -28,11 +29,15 @@ pub struct Application {
 	selected_date: NaiveDate,
 	calendar_scroll_offset: usize, //how far to the right the selected day is
 	calendar: CombinedCalendar,
+	config: ApplicationConfig,
 }
+//used in increase_selected_date_by() and decrease_selected_date_by()
+//for a polymorphic duration type that can represent days or months
 enum DaysOrMonths {
 	Days(Days),
 	Months(Months),
 }
+//i feel it is more readable if we use this rather than an integer
 #[derive(PartialEq)]
 enum SelectedWindow {
 	CalendarDisplay,
@@ -41,6 +46,7 @@ enum SelectedWindow {
 
 //lowk did not need to be a trait but i wanted to try out making my own
 trait DateOffsetString<U: Datelike + Copy>: Datelike + Copy {
+	//converts 29/9/26 to Today or 30/9/26 to Tomorrow
 	fn string_offset(self, other: U) -> String
 	where Self: Sub<U, Output = TimeDelta> {
 		let diff = -(self - other);
@@ -88,6 +94,7 @@ trait DateOffsetString<U: Datelike + Copy>: Datelike + Copy {
 	}
 }
 trait IsToday {
+	//i want to be able to do date.is_today()
 	fn is_today(&self) -> bool;
 }
 trait DeriveColor {
@@ -97,7 +104,7 @@ trait DeriveColor {
 		let mut hasher = DefaultHasher::new();
 		self.hash(&mut hasher);
 		let hash = hasher.finish();
-		let hash = hash % 16777216; //cap to 3 bytes
+		let hash = hash % 16777216; //cap to 3 bytes (2^48)
 		Color::from_u32(hash as u32)
 	}
 }
@@ -134,16 +141,16 @@ impl From<Months> for DaysOrMonths {
 
 impl Application {
 	//============ general calendar control functions ============
-	pub fn new(calendar: CombinedCalendar) -> Application {
+	pub fn new(calendar: CombinedCalendar, config: ApplicationConfig) -> Application {
 		let application = Application {
 			exit: false,
 			selected_window: SelectedWindow::CalendarDisplay,
 			calendar_view_size: 3,
-			//current_day_list_state: ListState::default().with_selected(Some(0)),
 			selected_event: Some(0),
 			selected_date: Local::now().date_naive(),
 			calendar_scroll_offset: 0,
-			calendar: calendar
+			calendar: calendar,
+			config: config,
 		};
 		application
 	}
@@ -211,6 +218,7 @@ impl Application {
 		self.decrease_selected_date_by(Days::new(1));
 	}
 	fn set_selected_date(&mut self, new_date: impl Datelike){
+		//dont do anything if date is invalid
 		if let Some(new_date) = NaiveDate::from_ymd_opt(
 			new_date.year(),
 			new_date.month(),
@@ -218,6 +226,7 @@ impl Application {
 		{
 			self.selected_date = new_date;
 		}
+		//set scroll to 0
 		self.selected_event = Some(0);
 	}
 	fn increase_calendar_view_size(&mut self, amount: usize){
@@ -249,18 +258,18 @@ impl Application {
 		}
 	}
 	//============ rendering functions ============
-	fn format_event_timespan(event: &CalendarEvent, day: NaiveDate) -> String {
+	fn format_event_timespan(&self, event: &CalendarEvent, day: NaiveDate) -> String {
 		if event.is_all_day(day){
 			format!("All day")
 		}else {
 			format!("{} - {}",
 				event.start_time()
 					.map(|t| t.clamp_date_to_day(day))
-					.map(|t| t.format(TIME_FORMAT_STRING).to_string())
+					.map(|t| t.format(&self.config.time_format()).to_string())
 					.unwrap_or(String::from("")),
 				event.end_time()
 					.map(|t| t.clamp_date_to_day(day))
-					.map(|t| t.format(TIME_FORMAT_STRING).to_string())
+					.map(|t| t.format(&self.config.time_format()).to_string())
 					.unwrap_or(String::from(""))
 			)
 		}
@@ -291,7 +300,7 @@ impl Application {
 			))
 			.centered()
 			.render(view_type,buf);
-		Line::from(self.selected_date.format(DATE_FORMAT_STRING).to_string())
+		Line::from(self.selected_date.format(&self.config.date_format()).to_string())
 			.centered()
 			.render(date_selected,buf);
 		Line::from(Local::now().date_naive().string_offset(self.selected_date))
@@ -316,7 +325,7 @@ impl Application {
 				Some(Line::from("")),
 				selected_event.description().map(Line::from),
 				selected_event.location().map(|l| Line::from(format!("Location: {l}"))),
-				Some(Line::from(Self::format_event_timespan(&selected_event,self.selected_date))),
+				Some(Line::from(self.format_event_timespan(&selected_event,self.selected_date))),
 				Some(Line::styled(
 					format!("Calendar: {}",selected_event.parent_calendar_name()),
 					Style::default().fg(selected_event.parent_calendar_name().derive_color())
@@ -354,7 +363,7 @@ impl Application {
 			//seperates individual days
 			let day_block = Block::new()
 				.borders(Borders::LEFT)
-				.title_top(Line::from(date.format(DATE_FORMAT_STRING).to_string())
+				.title_top(Line::from(date.format(&self.config.date_format()).to_string())
 					.centered()
 					.style(
 						//highlight red if it is selected
@@ -375,7 +384,7 @@ impl Application {
 				.iter()
 				.map(|event| vec![
 					Line::from(format!("--- {} {}",
-						Self::format_event_timespan(&event,date),
+						self.format_event_timespan(&event,date),
 						"-".repeat(max(list_item_width-12,0) as usize)
 					)),
 					Line::styled(
@@ -385,7 +394,8 @@ impl Application {
 					),
 					Line::from("")
 				])
-				.flatten() //will flatten [["00:00","event1",""],["01:00","event2",""]]
+				//will flatten [["00:00 - 01:00","event1",""],["01:00 - 02:00","event2",""]]
+				.flatten()
 				.collect();
 			let item_list = List::new(event_titles)
 				.block(day_block)

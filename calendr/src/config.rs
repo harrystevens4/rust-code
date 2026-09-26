@@ -12,6 +12,9 @@ url=https://example
 cache_web_calendars=true
 calendar_dir=/home/john/.local/share/calendr/
 
+[ui]
+date_format_string="%a - %d/%m/%Y"
+time_format_string="%H:%M"
 */
 
 use std::path::Path;
@@ -21,6 +24,9 @@ use std::env;
 use std::path::PathBuf;
 use iniconfig::{ConfigFile};
 use std::default::Default;
+
+const DATE_FORMAT_STRING: &str = "%a - %d/%m/%Y";
+const TIME_FORMAT_STRING: &str = "%H:%M";
 
 #[derive(Debug,Clone)]
 pub struct CalendarInfo {
@@ -37,6 +43,8 @@ pub struct CalendarConfig {
 pub struct ApplicationConfig {
 	cache_web_calendars: bool,
 	calendar_storage_dir: Option<PathBuf>,
+	date_format_string: String,
+	time_format_string: String,
 }
 
 impl Default for ApplicationConfig {
@@ -44,7 +52,9 @@ impl Default for ApplicationConfig {
 		ApplicationConfig {
 			cache_web_calendars: true,
 			calendar_storage_dir: env::home_dir()
-				.map(|h| h.join(".local/share/calendr"))
+				.map(|h| h.join(".local/share/calendr")),
+			date_format_string: DATE_FORMAT_STRING.to_string(),
+			time_format_string: TIME_FORMAT_STRING.to_string(),
 		}
 	}
 }
@@ -91,7 +101,26 @@ impl ApplicationConfig {
 		let mut application_config = Self::default();
 		for section in config {
             match section.name(){
+                "ui" => {
+					//====== date format string ======
+					if let Some(date_format_string) = section
+						.properties()
+						.get("date_format_string")
+						.map(String::from)
+					{
+						application_config.date_format_string = date_format_string;
+					}
+					//====== date format string ======
+					if let Some(time_format_string) = section
+						.properties()
+						.get("time_format_string")
+						.map(String::from)
+					{
+						application_config.time_format_string = time_format_string;
+					}
+				},
                 "storage" => {
+					//====== calendar dir ======
 					if let Some(calendar_dir) = section
 						.properties()
 						.get("calendar_dir")
@@ -99,6 +128,7 @@ impl ApplicationConfig {
 					{
 						application_config.calendar_storage_dir = Some(calendar_dir);
 					}
+					//====== cache status ======
 					if let Some(cache_status) = section
 						.properties()
 						.get("cache_web_calendars")
@@ -114,6 +144,12 @@ impl ApplicationConfig {
 	}
 	pub fn calendar_storage_dir(&self) -> Option<PathBuf> {
 		self.calendar_storage_dir.clone()
+	}
+	pub fn date_format(&self) -> String {
+		self.date_format_string.clone()
+	}
+	pub fn time_format(&self) -> String {
+		self.time_format_string.clone()
 	}
 }
 

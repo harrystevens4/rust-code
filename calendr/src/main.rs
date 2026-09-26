@@ -13,8 +13,6 @@ use crate::tui::Application;
 
 const STYLE_SELECTED_TEXT: Style = Style::new().white().on_red();
 const STYLE_HIGHLIGHTED_TEXT: Style = Style::new().underlined();
-const DATE_FORMAT_STRING: &str = "%a - %d/%m/%Y";
-const TIME_FORMAT_STRING: &str = "%H:%M";
 
 //if io::Error could impl From<String> that would be incredible
 #[macro_export]
@@ -110,7 +108,7 @@ fn main() -> Result<(),PlainError> {
 			.collect::<Result<Vec<_>,_>>()?;
 	}
 	//====== ratatui ======
-	let mut application = Application::new(calendar);
+	let mut application = Application::new(calendar,application_config);
 	ratatui::run(move |terminal| application.tui_loop(terminal))
         .map_err(|e| fmt_err!("Error in tui loop: {e}"))?;
     Ok(())
