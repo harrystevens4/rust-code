@@ -396,7 +396,19 @@ impl CalendarEvent {
 		self.title.clone()
 	}
 	pub fn description(&self) -> Option<String> {
-		self.description.clone()
+		self.description
+			.clone()
+			//unescape new lines
+			.map(|s| s.replace("\\n","\n"))
+			//remove leading and trailing spaces
+			.map(|s| s.trim().to_owned())
+			//turn into Vec<char>
+			.map(|s| s.chars().collect::<Vec<_>>())
+			//remove duplicate contiguous newlines
+			.map(|mut chars|{
+				chars.dedup_by(|a,b| *a == '\n' && *b == '\n');
+				chars.into_iter().collect() //turn back into string
+			})
 	}
 	pub fn location(&self) -> Option<String> {
 		self.location.clone()
