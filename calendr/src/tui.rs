@@ -336,18 +336,36 @@ impl Application {
 		//do nothing if there isnt a selected event
 		if let Some(Some(selected_event)) = self.selected_event.map(|e| events.get(e)){
 			//prepare lines to go into the paragraph
-			let event_info = vec![
-				Some(Line::from(selected_event.title()).centered()),
-				Some(Line::from("")),
-				selected_event.description().map(Line::from),
-				selected_event.location().map(|l| Line::from(format!("Location: {l}"))),
-				Some(Line::from(self.format_event_timespan(&selected_event,self.selected_date))),
-				Some(Line::styled(
+			let mut lines = Text::default();
+			//title
+			lines.push_line(selected_event.title());
+			//spacer
+			lines.push_line("");
+			//description if it exists
+			selected_event
+				.description()
+				.map(|d|{ let _ = d
+					.split('\n')
+					.for_each(|l| lines.push_line(Line::from(l.to_owned())));
+				});
+			//second spacer
+			lines.push_line("");
+			//location if it exists
+			selected_event
+				.location()
+				.map(|l| lines.push_line(format!("Location: {l}")));
+			//timespan
+			lines.push_line(
+				self.format_event_timespan(&selected_event,self.selected_date)
+			);
+			//calendar name
+			lines.push_line(Line::styled(
 					format!("Calendar: {}",selected_event.parent_calendar_name()),
-					Style::default().fg(selected_event.parent_calendar_name().derive_color())
-				)),
-			].into_iter().filter_map(|i| i).collect::<Vec<_>>();
-			Paragraph::new(event_info)
+					Style::default()
+						.fg(selected_event.parent_calendar_name().derive_color())
+			));
+			//construct paragraph
+			Paragraph::new(lines)
 				.block(event_info_block)
 				.wrap(Wrap { trim: false })
 				.render(area,buf);
