@@ -1,7 +1,7 @@
 use std::io;
 use std::iter::{Peekable,FromIterator};
 use std::collections::HashMap;
-use std::time::{SystemTime,Duration};
+use std::time::{Duration};
 use chrono::{DateTime,Utc,Datelike,Local,NaiveDate,TimeZone,Timelike,TimeDelta,Days};
 use uuid::Uuid;
 use std::error::Error;
@@ -136,14 +136,14 @@ fn iso_to_local_time(iso_time: &str) -> Option<DateTime<Local>> {
 		.replace("-","")
 		.replace(":","");
 	timestamp.make_ascii_uppercase();
-	let mut date_string = String::new();
+	let date_string;
 	let mut time_string = None;
-	let mut timezone_string = None;
+	let mut _timezone_string = None;
 	if let Some((date,time)) = timestamp.split_once("T"){
 		date_string = date.to_string();
 		if let Some((split_time,split_timezone)) = time.split_once("Z"){
 			time_string = Some(split_time);
-			timezone_string = Some(split_timezone);
+			_timezone_string = Some(split_timezone);
 		}else {
 			time_string = Some(time);
 		}
@@ -300,7 +300,7 @@ impl ICalendar {
 		let request_client = reqwest::blocking::Client::new();
 		let raw_calendar_text = request_client
 			.get(url.as_ref())
-			.send().map_err(|e| fmt_err!("unable to connect to {:?}",url.as_ref()))?
+			.send().map_err(|_| fmt_err!("unable to connect to {:?}",url.as_ref()))?
 			.text()?;
 		Ok(ICalendar::load_from_str(&name,raw_calendar_text)
 			.map_err(|e| fmt_err!("Error parsing calendar {:?}: {e}",name.as_ref()))?
@@ -314,38 +314,6 @@ impl CombinedCalendar {
 			calendars: Vec::new(),
 			events: HashMap::new(),
 		}
-	}
-	pub fn load_from_urls<T: AsRef<str>>(urls: Vec<(T,T)>) -> Result<CombinedCalendar,Box<dyn Error>>{
-		println!("fetching calendars...");
-		let request_client = reqwest::blocking::Client::new();
-		let mut raw_calendars = vec![];
-		for (calendar_name,calendar_url) in urls {
-			let raw_calendar_text = request_client
-				.get(calendar_url.as_ref())
-				.send().map_err(|e| fmt_err!("unable to connect to {:?}",calendar_url.as_ref()))?
-				.text()?;
-			raw_calendars.push((calendar_name.as_ref().to_owned(),raw_calendar_text));
-		}
-		println!("loading calendars...");
-		Ok(CombinedCalendar::load_from_strings(raw_calendars)?)
-	}
-	pub fn load_from_strings<T: AsRef<str>>(strings: Vec<(T,T)>) -> io::Result<CombinedCalendar>{
-		//====== prepare the combined calendar ======
-		let mut combined_calendar = CombinedCalendar {
-			calendars: Vec::new(),
-			events: HashMap::new(),
-		};
-		//====== load each calendar ======
-		for (name,raw_icalendar) in strings {
-			let calendar = ICalendar::load_from_str(name,raw_icalendar)?;
-			let events = calendar.get_calendar_events();
-			combined_calendar.calendars.push(calendar);
-			for event in events {
-				combined_calendar.add_new_event(event);
-			}
-		}
-		//println!("{:#?}",combined_calendar.events);
-		Ok(combined_calendar)
 	}
 	pub fn get_events_for_date(&self,date: impl Datelike) -> Vec<CalendarEvent>{
 		//====== pull out events for the selected day ======

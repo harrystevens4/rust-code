@@ -4,15 +4,15 @@ use ratatui::{
 	Frame,
 	crossterm,
 	crossterm::event::{KeyCode,KeyEventKind,Event},
-	style::{Stylize,Style,Color},
+	style::{Style,Color},
 	buffer::Buffer,
-	layout::{Rect,Constraint,Direction,Layout,Offset},
-	widgets::{Block, Paragraph, Widget, Shadow, Borders, List, ListState, StatefulWidget, Wrap},
-	text::{Line, Text},
+	layout::{Rect,Constraint,Direction,Layout},
+	widgets::{Block,Paragraph,Widget,Borders,List,ListState,StatefulWidget,Wrap},
+	text::Line,
 	symbols::{border},
 };
 use std::default::Default;
-use chrono::{Local,NaiveDate,Datelike,Days,Months,TimeDelta,NaiveTime,NaiveDateTime};
+use chrono::{Local,NaiveDate,Datelike,Days,Months,TimeDelta};
 use crate::{DATE_FORMAT_STRING,TIME_FORMAT_STRING,STYLE_SELECTED_TEXT,STYLE_HIGHLIGHTED_TEXT};
 use std::error::Error;
 use std::ops::Sub;
@@ -211,11 +211,13 @@ impl Application {
 		self.decrease_selected_date_by(Days::new(1));
 	}
 	fn set_selected_date(&mut self, new_date: impl Datelike){
-		self.selected_date = NaiveDate::from_ymd(
+		if let Some(new_date) = NaiveDate::from_ymd_opt(
 			new_date.year(),
 			new_date.month(),
-			new_date.day()
-		);
+			new_date.day())
+		{
+			self.selected_date = new_date;
+		}
 		self.selected_event = Some(0);
 	}
 	fn increase_calendar_view_size(&mut self, amount: usize){

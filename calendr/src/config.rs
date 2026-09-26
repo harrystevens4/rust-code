@@ -19,7 +19,7 @@ use std::fs;
 use std::io;
 use std::env;
 use std::path::PathBuf;
-use iniconfig::{ConfigFile,ConfigSection};
+use iniconfig::{ConfigFile};
 use std::default::Default;
 
 #[derive(Debug,Clone)]
