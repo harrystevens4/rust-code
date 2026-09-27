@@ -268,7 +268,7 @@ impl Application {
 		self.set_calendar_view_size(self.calendar_view_size+amount)
 	}
 	fn decrease_calendar_view_size(&mut self, amount: usize){
-		self.set_calendar_view_size(self.calendar_view_size-amount)
+		self.set_calendar_view_size(self.calendar_view_size.saturating_sub(amount))
 	}
 	fn set_calendar_view_size(&mut self, new_size: usize){
 		//min and max bounds
@@ -276,7 +276,7 @@ impl Application {
 		//make sure the selected date is still visible
 		self.calendar_scroll_offset = min(
 			self.calendar_scroll_offset as isize,
-			(new_size-1) as isize
+			(new_size.saturating_sub(1)) as isize
 		) as usize;
 	}
 	fn increase_selected_date_by(&mut self, time: impl Into<DaysOrMonths>){
