@@ -4,7 +4,12 @@ use ratatui::{
 	DefaultTerminal,
 	Frame,
 	crossterm,
-	crossterm::event::{KeyCode,KeyEventKind,Event,KeyModifiers},
+	crossterm::event::{
+		KeyCode,
+		KeyEventKind,
+		Event,
+		KeyModifiers,
+	},
 	style::{Style,Color},
 	buffer::Buffer,
 	layout::{Rect,Constraint,Direction,Layout},
@@ -195,9 +200,6 @@ impl Application {
 				Char('n') if !filter => self.set_selected_date(Local::now()),
 				Char('[') if !filter => self.decrease_selected_date_by(Months::new(1)),
 				Char(']') if !filter => self.increase_selected_date_by(Months::new(1)),
-				Char('/') => self.toggle_filter(),
-				Char(c) => self.filter_add_char(c),
-				Backspace => self.filter_remove_char(),
 				Down =>
 					if self.selected_window == SelectedWindow::CalendarDisplay {
 						self.select_next_event();
@@ -212,11 +214,15 @@ impl Application {
 				Left => self.scroll_calendar_left(),
 				Tab => self.selected_window.next(),
 				//reverse search
-				Enter if filter && key_event.modifiers == KeyModifiers::CONTROL => 
+				Enter if filter && key_event.modifiers == KeyModifiers::ALT => 
 					self.find_previous_filtered_event(),
 				//forwards search
 				Enter if filter && key_event.modifiers == KeyModifiers::NONE => 
 					self.find_next_filtered_event(),
+				//typing in the filter
+				Char('/') => self.toggle_filter(),
+				Char(c) => self.filter_add_char(c),
+				Backspace => self.filter_remove_char(),
 				_ => (),
 			}},
 			_ => (),
@@ -464,7 +470,7 @@ impl Application {
 		let bottom_hint_text = if self.filter.is_none(){
 			" =/- to change view "
 		}else {
-			" Enter and Ctrl-Enter to search "
+			" Enter and Alt-Enter to search "
 		};
 		//block outline
 		let calendar_display_block = Block::bordered()
