@@ -4,7 +4,7 @@ use ratatui::{
 	DefaultTerminal,
 	Frame,
 	crossterm,
-	crossterm::event::{KeyCode,KeyEventKind,Event},
+	crossterm::event::{KeyCode,KeyEventKind,Event,KeyModifiers},
 	style::{Style,Color},
 	buffer::Buffer,
 	layout::{Rect,Constraint,Direction,Layout},
@@ -211,6 +211,12 @@ impl Application {
 				Right => self.scroll_calendar_right(),
 				Left => self.scroll_calendar_left(),
 				Tab => self.selected_window.next(),
+				//reverse search
+				Enter if filter && key_event.modifiers == KeyModifiers::CONTROL => 
+					self.find_previous_filtered_event(),
+				//forwards search
+				Enter if filter && key_event.modifiers == KeyModifiers::NONE => 
+					self.find_next_filtered_event(),
 				_ => (),
 			}},
 			_ => (),
@@ -218,8 +224,8 @@ impl Application {
 		Ok(())
 	}
 	fn select_next_event(&mut self){
-		let event_count = self.calendar
-			.get_events_for_date(self.selected_date)
+		let event_count = self
+			.get_filtered_events_for_date(self.selected_date)
 			.len();
 		if event_count > 0 {
 			self.selected_event = self.selected_event.map(|i| min(i+1,event_count-1));
@@ -288,12 +294,69 @@ impl Application {
 	fn filter_add_char(&mut self, c: char){
 		if let Some(filter) = &mut self.filter {
 			filter.push(c);
+			//reset selected event so user doesnt end up selecting something that doesnt exist
+			self.selected_event = Some(0);
 		}
 	}
 	fn filter_remove_char(&mut self){
 		if let Some(filter) = &mut self.filter {
 			filter.pop();
 		}
+	}
+	fn get_filtered_events_for_date(&self, date: NaiveDate) -> Vec<CalendarEvent>{
+		match self.filter {
+			//dont filter if filter is off
+			None => self.calendar
+				.get_events_for_date(date),
+			//filter by title or description if filter is set
+			Some(ref filter) => self.calendar
+				.get_events_for_date(date)
+				.into_iter()
+				.filter(|e|{
+					e.title()
+						.to_ascii_lowercase()
+						.contains(&filter.to_ascii_lowercase())
+					|| e.description().map(|d| 
+						d.to_ascii_lowercase()
+						.contains(&filter.to_ascii_lowercase())
+					).unwrap_or(false) //no description match if there isnt one
+				})
+				.collect(),
+		}
+	}
+	fn find_next_filtered_event(&mut self){
+		//store the old selected date and event
+		let old_selected_date = self.selected_date;
+		let old_selected_event = self.selected_event;
+		//only check the next 5 years
+		for _ in 0..(365*5) {
+			//move to next day
+			self.increase_selected_date_by(Days::new(1));
+			//if any filtered events available, stop
+			if self.get_filtered_events_for_date(self.selected_date).len() > 0 {
+				return
+			}
+		}
+		//no matches so go back to previous selection
+		self.selected_date = old_selected_date;
+		self.selected_event = old_selected_event;
+	}
+	fn find_previous_filtered_event(&mut self){
+		//store the old selected date and event
+		let old_selected_date = self.selected_date;
+		let old_selected_event = self.selected_event;
+		//only check the previous 5 years
+		for _ in 0..(365*5) {
+			//move to next day
+			self.decrease_selected_date_by(Days::new(1));
+			//if any filtered events available, stop
+			if self.get_filtered_events_for_date(self.selected_date).len() > 0 {
+				return
+			}
+		}
+		//no matches so go back to previous selection
+		self.selected_date = old_selected_date;
+		self.selected_event = old_selected_event;
 	}
 	//============ rendering functions ============
 	fn format_event_timespan(&self, event: &CalendarEvent, day: NaiveDate) -> String {
@@ -352,9 +415,10 @@ impl Application {
 				if self.selected_window == SelectedWindow::EventInfo {STYLE_SELECTED_TEXT}
 				else {Style::new()}
 			).centered())
+			.title_bottom(Line::from(" / to filter ").centered())
 			.border_set(border::THICK);
 		//grab all the info
-		let events = self.calendar.get_events_for_date(self.selected_date);
+		let events = self.get_filtered_events_for_date(self.selected_date);
 		//do nothing if there isnt a selected event
 		if let Some(Some(selected_event)) = self.selected_event.map(|e| events.get(e)){
 			//prepare lines to go into the paragraph
@@ -396,9 +460,15 @@ impl Application {
 		}
 	}
 	fn render_calendar_display(&mut self, area: Rect, buf: &mut Buffer){
+		//theres not enough room on the ui to show both at the same time
+		let bottom_hint_text = if self.filter.is_none(){
+			" =/- to change view "
+		}else {
+			" Enter and Ctrl-Enter to search "
+		};
 		//block outline
 		let calendar_display_block = Block::bordered()
-			.title_bottom(Line::from(" =/- to change view ").centered())
+			.title_bottom(Line::from(bottom_hint_text).centered())
 			.title(Line::styled(" Calendar ",
 				if self.selected_window == SelectedWindow::CalendarDisplay {STYLE_SELECTED_TEXT}
 				else {Style::new()}
@@ -433,8 +503,8 @@ impl Application {
 					)
 				);
 			let list_item_width = calendar_day_layout[i].width as isize;
-			let events = self.calendar
-				.get_events_for_date(date);
+			//grab our events
+			let events = self.get_filtered_events_for_date(date);
 			//calculate wrap
 			let text_wrap_width = if self.config.wrap_calendar_view_events(){
 				calendar_day_layout[i].width as usize - 1
