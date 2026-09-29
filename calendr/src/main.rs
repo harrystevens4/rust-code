@@ -2,9 +2,11 @@ mod icalendar;
 mod config;
 mod tui;
 use std::env;
+use std::thread;
 use std::fs;
 use std::io;
 use std::{fmt::{Debug,Display,Formatter},fmt};
+use std::sync::Mutex;
 use icalendar::{CombinedCalendar,ICalendar};
 use config::{ApplicationConfig,CalendarConfig};
 use ratatui::style::Style;
@@ -57,9 +59,54 @@ fn main() -> Result<(),PlainError> {
 		.flatten()
 		.inspect_err(|e| eprintln!("Error loading calendar config: {e}"))
 		.unwrap_or_default();
-	//====== fetch and load each calendar ======
-	//pipeline from urls to calendar
-	println!("loading calendars...");
+	//====== load calendars from cache if we can ======
+	let calendar = calendar_config
+        .calendars()
+		.into_iter()
+		//just grab the name of each calendar
+		.map(|calendar| calendar.name())
+		//grab file contents for each calendar
+		.map(|name| {
+			//read the calendar from file
+			let calendar_contents = application_config
+				.calendar_storage_dir()
+				.and_then(|calendar_dir| { fs::read_to_string(calendar_dir.join(&name))
+					//print out error if one occurs
+					.inspect_err(|e| eprintln!("Error loading calendar {name:?}: {e}"))
+					.ok()
+				});
+			//package up name and contents to pass to next stage of pipeline
+			match calendar_contents {
+				Some(contents) => Some((name,contents)),
+				None => None
+			}
+		})
+		//remove all calendars that failed to load
+		.filter_map(|x| x)
+		//try loading it from all the file contents
+		.map(|(name,contents)| ICalendar::load_from_str(name,contents))
+		.collect::<Result<CombinedCalendar,_>>()
+		.map_err(|e| fmt_err!("Error loading cached calendar: {e}"))?;
+	//====== start calendar fetch thread and application ======
+	let calendar_mutex = Mutex::new(calendar);
+	thread::scope(|s| -> io::Result<()> {
+		//====== fetch calendars ======
+		let update_thread = s.spawn(|| -> io::Result<()> {
+			update_calendars(&application_config,&calendar_config,&calendar_mutex)
+		});
+		//====== ratatui ======
+		let mut application = Application::new(&calendar_mutex,&application_config);
+		ratatui::run(move |terminal| application.tui_loop(terminal))
+			.map_err(|e| fmt_err!("Error in tui loop: {e}"))?;
+		//propogate any panics
+		update_thread.join().unwrap()?;
+		Ok(())
+	})?;
+    Ok(())
+}
+
+fn update_calendars(application_config: &ApplicationConfig, calendar_config: &CalendarConfig, calendar_mutex: &Mutex<CombinedCalendar>) -> io::Result<()> {
+	//====== fetch the calendars ======
 	let calendar = calendar_config
         .calendars()
 		.into_iter()
@@ -96,7 +143,6 @@ fn main() -> Result<(),PlainError> {
 		.map_err(|e| fmt_err!("Error loading calendar: {e}"))?;
 	//====== cache the calendars ======
 	if let Some(calendar_dir) = application_config.calendar_storage_dir(){
-		println!("caching downloads...");
 		fs::create_dir_all(&calendar_dir)
 			.map_err(|e| fmt_err!("mkdir({calendar_dir:?}): {e}"))?;
 		calendar
@@ -107,9 +153,8 @@ fn main() -> Result<(),PlainError> {
 			)
 			.collect::<Result<Vec<_>,_>>()?;
 	}
-	//====== ratatui ======
-	let mut application = Application::new(calendar,application_config);
-	ratatui::run(move |terminal| application.tui_loop(terminal))
-        .map_err(|e| fmt_err!("Error in tui loop: {e}"))?;
-    Ok(())
+	//====== acquire the mutex and store new calendar value ======
+	let mut calendar_mutex = calendar_mutex.lock().unwrap();
+	*calendar_mutex = calendar;
+	Ok(())
 }

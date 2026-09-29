@@ -1,5 +1,7 @@
 use std::cmp::{min,max};
+use std::sync::{Mutex};
 use crate::config::ApplicationConfig;
+use std::time::Duration;
 use ratatui::{
 	DefaultTerminal,
 	Frame,
@@ -26,15 +28,15 @@ use crate::icalendar::{CombinedCalendar,CalendarEvent,ClampDateToDay};
 use std::io;
 use std::hash::{Hash,DefaultHasher,Hasher};
 
-pub struct Application {
+pub struct Application<'a> {
 	exit: bool,
 	selected_window: SelectedWindow, //0 for calendar 1 for event info
 	calendar_view_size: usize, //1 - 1 day, 7 - week
 	selected_event: Option<usize>,
 	selected_date: NaiveDate,
 	calendar_scroll_offset: usize, //how far to the right the selected day is
-	calendar: CombinedCalendar,
-	config: ApplicationConfig,
+	calendar: &'a Mutex<CombinedCalendar>,
+	config: &'a ApplicationConfig,
 	filter: Option<String>,
 }
 //used in increase_selected_date_by() and decrease_selected_date_by()
@@ -159,9 +161,9 @@ fn wrap_text(text: impl AsRef<str>, width: usize) -> String {
 		.collect()
 }
 
-impl Application {
+impl Application<'_> {
 	//============ general calendar control functions ============
-	pub fn new(calendar: CombinedCalendar, config: ApplicationConfig) -> Application {
+	pub fn new<'a>(calendar: &'a Mutex<CombinedCalendar>, config: &'a ApplicationConfig) -> Application<'a> {
 		//create our awesome application
 		let mut application = Application {
 			exit: false,
@@ -170,12 +172,12 @@ impl Application {
 			selected_event: Some(0),
 			selected_date: Local::now().date_naive(),
 			calendar_scroll_offset: 0,
-			calendar: calendar,
-			config: config.clone(),
+			calendar: calendar, //impossible challenge: try not to deadlock
+			config: config,
 			filter: None,
 		};
 		//this does a bounds check rather than trusting the user
-		application.set_calendar_view_size(config.default_view_size());
+		application.set_calendar_view_size(application.config.default_view_size());
 		application
 	}
 	pub fn tui_loop(&mut self, terminal: &mut DefaultTerminal) -> Result<(),Box<dyn Error>>{
@@ -191,27 +193,46 @@ impl Application {
 	fn handle_events(&mut self) -> io::Result<()>{
 		use KeyCode::*;
 		let filter = self.filter.is_some();
+		//check for available events
+		if crossterm::event::poll(Duration::from_secs(1))? == false {
+			//no events available
+			return Ok(())
+		}
+		//read the event
 		match crossterm::event::read()?{
 			Event::Key(key_event) if key_event.kind == KeyEventKind::Press => {
 			match key_event.code {
+				//quit
 				Char('q') if !filter => self.exit(),
+				//increase calendar view size
 				Char('=') if !filter => self.increase_calendar_view_size(1),
+				//decrease calendar view size
 				Char('-') if !filter => self.decrease_calendar_view_size(1),
+				//go to today
 				Char('n') if !filter => self.set_selected_date(Local::now()),
+				//one month previous
 				Char('[') if !filter => self.decrease_selected_date_by(Months::new(1)),
+				//next month
 				Char(']') if !filter => self.increase_selected_date_by(Months::new(1)),
+				//redraw key
+				Char('l') if key_event.modifiers == KeyModifiers::CONTROL => self.redraw(),
+				//scroll down calendar events
 				Down =>
 					if self.selected_window == SelectedWindow::CalendarDisplay {
 						self.select_next_event();
 					}else {
 					},
+				//scroll up calendar events
 				Up =>
 					if self.selected_window == SelectedWindow::CalendarDisplay {
 						self.select_prev_event()
 					}else {
 					},
+				//scroll to next day
 				Right => self.scroll_calendar_right(),
+				//scroll to previous day
 				Left => self.scroll_calendar_left(),
+				//switch selected window
 				Tab => self.selected_window.next(),
 				//reverse search
 				Enter if filter && key_event.modifiers == KeyModifiers::ALT => 
@@ -310,12 +331,13 @@ impl Application {
 		}
 	}
 	fn get_filtered_events_for_date(&self, date: NaiveDate) -> Vec<CalendarEvent>{
+		//panic bc if the mutex is poisoned it should crash really
+		let calendar = self.calendar.lock().unwrap();
 		match self.filter {
 			//dont filter if filter is off
-			None => self.calendar
-				.get_events_for_date(date),
+			None => calendar.get_events_for_date(date),
 			//filter by title or description if filter is set
-			Some(ref filter) => self.calendar
+			Some(ref filter) => calendar
 				.get_events_for_date(date)
 				.into_iter()
 				.filter(|e|{
@@ -365,6 +387,10 @@ impl Application {
 		self.selected_event = old_selected_event;
 	}
 	//============ rendering functions ============
+	fn redraw(&mut self){
+		//do nothing as simply receiving the key input will
+		//cause the loop to continue and redraw
+	}
 	fn format_event_timespan(&self, event: &CalendarEvent, day: NaiveDate) -> String {
 		if event.is_all_day(day){
 			format!("All day")
@@ -584,7 +610,7 @@ impl Application {
 			.render(area,buf);
 	}
 }
-impl Widget for &mut Application {
+impl Widget for &mut Application<'_> {
 	fn render(self, area: Rect, buf: &mut Buffer){
 		//====== main layouts ======
 		let [top_rect,bottom_rect] = area.layout(&Layout::default()
