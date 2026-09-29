@@ -11,6 +11,7 @@ url=https://example
 [storage]
 cache_web_calendars=true
 calendar_dir=/home/john/.local/share/calendr/
+cache_ttl_mins=0
 
 [ui]
 date_format_string="%a - %d/%m/%Y"
@@ -50,6 +51,7 @@ pub struct ApplicationConfig {
 	time_format_string: String,
 	default_view_size: usize,
 	wrap_calendar_view_events: bool,
+	cache_ttl_mins: usize,
 }
 
 impl Default for ApplicationConfig {
@@ -62,6 +64,7 @@ impl Default for ApplicationConfig {
 			time_format_string: TIME_FORMAT_STRING.to_string(),
 			default_view_size: 3,
 			wrap_calendar_view_events: false,
+			cache_ttl_mins: 0,
 		}
 	}
 }
@@ -146,6 +149,9 @@ impl ApplicationConfig {
 					for (key,value) in section.properties() { match key.as_str() {
 						"calendar_dir" => config.calendar_storage_dir = Some(value.into()),
 						"cache_web_calendars" => config.cache_web_calendars = parse_bool(value)?,
+						"cache_ttl_mins" => config.cache_ttl_mins = value
+							.parse()
+							.map_err(|e| fmt_err!("Error parsing cache_ttl_mins: {e}"))?,
 						_ => Err(fmt_err!("Unknown key {:?} in section {:?}",key,section.name()))?
 					}}
 				},
