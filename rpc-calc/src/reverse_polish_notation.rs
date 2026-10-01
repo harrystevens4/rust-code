@@ -19,9 +19,14 @@ pub enum ExpressionError {
 	StackEmptyError,
 	UnknownFunction(String),
 	TooManyValues,
+	NotEnoughValues,
 }
 
 type Number = f64;
+
+//Function is a function that takes in a number and returns either a function or number
+//Functions that take more than one argument can be built by manually currying or using
+//the helper `with_2_args()` function
 struct Function {
 	function: Box<dyn FnOnce(Number) -> Term>,
 }
@@ -85,7 +90,13 @@ impl Expression {
 						Function::with_2_args(|term_1,term_2| term_2-term_1)
 					)),
 					"+" => Ok(Term::Function(
-						Function::with_2_args(|term_1,term_2| term_1+term_2)
+						Function::with_2_args(|term_1,term_2| term_2+term_1)
+					)),
+					"*" => Ok(Term::Function(
+						Function::with_2_args(|term_1,term_2| term_2*term_1)
+					)),
+					"/" => Ok(Term::Function(
+						Function::with_2_args(|term_1,term_2| term_2/term_1)
 					)),
 					_ => Err(ExpressionError::UnknownFunction(term.into()))
 				}
@@ -95,37 +106,42 @@ impl Expression {
 			terms,
 		})
 	}
-	fn apply_functions(terms: Vec<Term>) -> Result<Number,ExpressionError> {
+	pub fn evaluate(self) -> Result<Number,ExpressionError> {
 		let mut stack: Vec<Term> = vec![];
-		match terms[..] {
-			//if only one value is left that is the result
-			[Term::Value(last_item)] => return Ok(last_item),
-			//if only one function is left that is an error
-			[Term::Function(_)] => return Err(ExpressionError::StackEmptyError),
-			//otherwise continue
-			_ => (),
-		}
-		//if no functions were applied we have an error
-		let mut function_applied = false;
-		for term in terms {
-			dbg!{&term};
-			match term {
-				Term::Value(val) => stack.push(Term::Value(val)),
-				Term::Function(func) => {
-					let Some(Term::Value(top)) = stack.pop()
-					else {Err(ExpressionError::StackEmptyError)?};
-					stack.push(func.apply(top));
-					function_applied = true;
+		//VecDequeue would probably be more suitable
+		let mut reverse_terms: Vec<Term> = self.terms.into_iter().rev().collect();
+		//loop through our terms
+		loop {
+			match reverse_terms.pop() {
+				//if we find a value add it to the stack
+				Some(Term::Value(val)) => {
+					stack.push(Term::Value(val));
 				}
+				//if we find a function, apply it and add the result
+				//to the end of reverse_terms
+				Some(Term::Function(func)) => {
+					let Some(Term::Value(top)) = stack.pop()
+					else {Err(ExpressionError::NotEnoughValues)?};
+					reverse_terms.push(func.apply(top));
+					//using a function such as `+` (which is curried) will
+					//result in it being partially applied, then added back to the terms
+					//so that it can be applied again on the next iteration to result in
+					//a value that will then be added to the stack in the iteration after
+				},
+				//nothing left means computation complete
+				None => break
 			}
 		}
-		if !function_applied {
-			return Err(ExpressionError::TooManyValues)
+		//last item in the stack should be the result
+		match stack[..] {
+			//if only one value is left that is the result
+			[Term::Value(last_item)] => Ok(last_item),
+			//if only one function is left that is an error
+			[Term::Function(_)] => Err(ExpressionError::NotEnoughValues),
+			//no values means not enough expressions
+			[] => Err(ExpressionError::StackEmptyError),
+			_ => Err(ExpressionError::TooManyValues),
 		}
-		Self::apply_functions(stack)
-	}
-	pub fn evaluate(self) -> Result<Number,ExpressionError> {
-		Self::apply_functions(self.terms)
 	}
 }
 
@@ -168,6 +184,33 @@ mod tests {
 		let result = expression.evaluate()
 			.unwrap();
 		assert_eq!(result,4.0)
+    }
+    #[test]
+    fn add_3_4_add_5_6_mult() {
+		use Term::*;
+		let expression = Expression::parse("3 4 + 5 6 + *")
+			.unwrap();
+		let result = expression.evaluate()
+			.unwrap();
+		assert_eq!(result,77.0)
+    }
+	#[test]
+    fn div_10_5() {
+		use Term::*;
+		let expression = Expression::parse("10 5 /")
+			.unwrap();
+		let result = expression.evaluate()
+			.unwrap();
+		assert_eq!(result,2.0)
+    }
+    #[test]
+    fn complex_1() {
+		use Term::*;
+		let expression = Expression::parse("2 3 4 + * 10 5 / -")
+			.unwrap();
+		let result = expression.evaluate()
+			.unwrap();
+		assert_eq!(result,12.0)
     }
     #[test]
     fn abs_minus_15() {
