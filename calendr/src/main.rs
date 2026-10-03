@@ -123,24 +123,9 @@ fn update_calendars(application_config: &ApplicationConfig, calendar_config: &Ca
         .map_err(|e| fmt_err!("Error reading calendars config file: {e}"))?
 		.into_iter()
 		//try loading from url
-		.map(|(n,u)| match ICalendar::load_from_url(&n,&u){
-			Ok(c) => Ok(c),
-			//check for cache location
-			Err(e1) => match application_config.calendar_storage_dir(){
-				//if we cant load from url try from cache
-				Some(d) => match fs::read_to_string(d.join(&n)){
-					Ok(s) => {
-						println!("Falling back on cached calendar {n:?} due to error: {e1}");
-						ICalendar::load_from_str(n,s)
-					},
-					//if we cant load from cache its an epic fail
-					Err(e2) => Err(fmt_err!("Error loading {n:?} from url: {e1}\n followed by error loading from cache: {e2}")),
-				},
-				None => Err(fmt_err!("Error loading {n:?} from url: {e1}\nNo fallback cache dir available"))
-			}
-		})
+		.map(|(n,u)| ICalendar::load_from_url(&n,&u))
 		.collect::<Result<CombinedCalendar,_>>()
-		.map_err(|e| fmt_err!("Error loading calendar: {e}"))?;
+		.map_err(|e| fmt_err!("Error fetching calendar: {e}"))?;
 	//====== cache the calendars ======
 	if let Some(calendar_dir) = application_config.calendar_storage_dir(){
 		fs::create_dir_all(&calendar_dir)
