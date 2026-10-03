@@ -15,7 +15,7 @@ use ratatui::{
 	style::{Style,Color},
 	buffer::Buffer,
 	layout::{Rect,Constraint,Direction,Layout},
-	widgets::{Block,Paragraph,Widget,Borders,List,ListState,StatefulWidget,Wrap},
+	widgets::{Block,Paragraph,Widget,Borders,List,ListState,StatefulWidget,Wrap,Scrollbar,ScrollbarState,ScrollbarOrientation},
 	text::{Line,Text,Span},
 	symbols::{border},
 };
@@ -35,6 +35,7 @@ pub struct Application<'a> {
 	selected_event: Option<usize>,
 	selected_date: NaiveDate,
 	calendar_scroll_offset: usize, //how far to the right the selected day is
+    event_info_scroll_offset: u16,
 	calendar: &'a Mutex<CombinedCalendar>,
 	config: &'a ApplicationConfig,
 	filter: Option<String>,
@@ -172,6 +173,7 @@ impl Application<'_> {
 			selected_event: Some(0),
 			selected_date: Local::now().date_naive(),
 			calendar_scroll_offset: 0,
+            event_info_scroll_offset: 0,
 			calendar: calendar, //impossible challenge: try not to deadlock
 			config: config,
 			filter: None,
@@ -219,19 +221,29 @@ impl Application<'_> {
 				//scroll down calendar events
 				Down =>
 					if self.selected_window == SelectedWindow::CalendarDisplay {
+                        //scroll to next event on calendar if calendar selected
 						self.select_next_event();
 					}else {
+                        //scroll down on event info if event info window selected
+                        self.event_info_scroll_offset = self.event_info_scroll_offset
+                            .saturating_add(1);
 					},
 				//scroll up calendar events
 				Up =>
 					if self.selected_window == SelectedWindow::CalendarDisplay {
+                        //scroll to previous event on calendar if calendar selected
 						self.select_prev_event()
 					}else {
+                        //scroll up on event info if event info window selected
+                        self.event_info_scroll_offset = self.event_info_scroll_offset
+                            .saturating_sub(1);
 					},
 				//scroll to next day
-				Right => self.scroll_calendar_right(),
+				Right if self.selected_window == SelectedWindow::CalendarDisplay =>
+                    self.scroll_calendar_right(),
 				//scroll to previous day
-				Left => self.scroll_calendar_left(),
+				Left if self.selected_window == SelectedWindow::CalendarDisplay =>
+                    self.scroll_calendar_left(),
 				//switch selected window
 				Tab => self.selected_window.next(),
 				//reverse search
@@ -257,9 +269,13 @@ impl Application<'_> {
 		if event_count > 0 {
 			self.selected_event = self.selected_event.map(|i| min(i+1,event_count-1));
 		}
+        //reset event info scroll
+        self.event_info_scroll_offset = 0;
 	}
 	fn select_prev_event(&mut self){
 		self.selected_event = self.selected_event.map(|i| if i > 0 {i-1} else {i});
+        //reset event info scroll
+        self.event_info_scroll_offset = 0;
 	}
 	fn scroll_calendar_right(&mut self){
 		if self.calendar_scroll_offset < self.calendar_view_size-1 {
@@ -284,6 +300,8 @@ impl Application<'_> {
 		}
 		//set scroll to 0
 		self.selected_event = Some(0);
+        //reset event info scroll
+        self.event_info_scroll_offset = 0;
 	}
 	fn increase_calendar_view_size(&mut self, amount: usize){
 		self.set_calendar_view_size(self.calendar_view_size+amount)
@@ -323,11 +341,15 @@ impl Application<'_> {
 			filter.push(c);
 			//reset selected event so user doesnt end up selecting something that doesnt exist
 			self.selected_event = Some(0);
+            //reset event info scroll
+            self.event_info_scroll_offset = 0;
 		}
 	}
 	fn filter_remove_char(&mut self){
 		if let Some(filter) = &mut self.filter {
 			filter.pop();
+            //reset event info scroll
+            self.event_info_scroll_offset = 0;
 		}
 	}
 	fn get_filtered_events_for_date(&self, date: NaiveDate) -> Vec<CalendarEvent>{
@@ -483,10 +505,28 @@ impl Application<'_> {
 						.fg(selected_event.parent_calendar_name().derive_color())
 			));
 			//construct paragraph
-			Paragraph::new(lines)
+			let paragraph = Paragraph::new(lines)
 				.block(event_info_block)
-				.wrap(Wrap { trim: false })
-				.render(area,buf);
+                .scroll((self.event_info_scroll_offset,0))
+				.wrap(Wrap { trim: false });
+            let lines_of_content = paragraph.line_count(area.width);
+			paragraph.render(area,buf);
+            //create scrollbar
+            let scrollbar = Scrollbar::new(ScrollbarOrientation::VerticalLeft);
+            //maximum scroll offset essentially
+            let scroll_notches = lines_of_content
+                    .saturating_add(2)
+                    .saturating_sub(area.height as usize);
+            //fill in the state to render
+            let mut scrollbar_state = ScrollbarState::default()
+                .content_length(scroll_notches)
+                .position(self.event_info_scroll_offset as usize);
+            //need a smaller area for the scrollbar so it fits in the left side of the block
+            let mut scrollbar_area = area;
+            scrollbar_area.height = scrollbar_area.height.saturating_sub(2);
+            scrollbar_area.y = scrollbar_area.y.saturating_add(1);
+            //render it
+			StatefulWidget::render(scrollbar,scrollbar_area,buf,&mut scrollbar_state);
 		}else {
 			event_info_block.render(area,buf);
 		}
