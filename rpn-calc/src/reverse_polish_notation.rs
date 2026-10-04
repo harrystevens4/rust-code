@@ -112,6 +112,9 @@ impl Expression {
 					"/" => Ok(Term::Function(
 						Function::with_2_args(|term_1,term_2| term_2/term_1)
 					)),
+                    "mod" => Ok(Term::Function(
+						Function::with_2_args(|term_1,term_2| term_2.rem_euclid(term_1))
+                    )),
 					_ => Err(ExpressionError::UnknownFunction(term.into()))
 				}
 			})
