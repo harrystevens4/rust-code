@@ -89,6 +89,11 @@ impl Expression {
 			.as_ref()
 			//split by space
 			.split(" ")
+            //remove empty terms
+            .filter_map(|string|
+                if string.is_empty() {None}
+                else {Some(string)}
+            )
 			//categorise terms as number or function
 			.map(|term|{
 				//try to parse as float
