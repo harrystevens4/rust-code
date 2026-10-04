@@ -58,7 +58,7 @@ fn eval_from_stdin() {
         //attempt to evaluate it
         match stateful_evaluator.feed(expression) {
             Ok(()) => println!("===> {}", match &stateful_evaluator.stack()[..] {
-                [rpn::Term::Value(value)] => format!("{value}"),
+                [value] => format!("{value}"),
                 other => format!("{other:?}"),
             }),
             Err(e) => {

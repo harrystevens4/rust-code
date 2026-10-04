@@ -21,7 +21,7 @@ pub enum ExpressionError {
 }
 
 pub struct StatefulEvaluator {
-    stack: Vec<Term>,
+    stack: Vec<Number>,
 }
 
 type Number = f64;
@@ -149,12 +149,12 @@ impl StatefulEvaluator {
 			match reverse_terms.pop() {
 				//if we find a value add it to the stack
 				Some(Term::Value(val)) => {
-					self.stack.push(Term::Value(val));
+					self.stack.push(val);
 				}
 				//if we find a function, apply it and add the result
 				//to the end of reverse_terms
 				Some(Term::Function(func)) => {
-					let Some(Term::Value(top)) = self.stack.pop()
+					let Some(top) = self.stack.pop()
 					else {Err(ExpressionError::NotEnoughValues)?};
 					reverse_terms.push(func.apply(top));
 					//using a function such as `+` (which is curried) will
@@ -167,16 +167,14 @@ impl StatefulEvaluator {
 			}
 		}
     }
-    pub fn stack<'a>(&'a self) -> &'a Vec<Term> {
+    pub fn stack<'a>(&'a self) -> &'a Vec<Number> {
         &self.stack
     }
     pub fn result(self) -> Result<Number,ExpressionError> {
 		//last item in the stack should be the result
 		match self.stack[..] {
 			//if only one value is left that is the result
-			[Term::Value(last_item)] => Ok(last_item),
-			//if only one function is left that is an error
-			[Term::Function(_)] => Err(ExpressionError::NotEnoughValues),
+			[last_item] => Ok(last_item),
 			//no values means not enough expressions
 			[] => Err(ExpressionError::StackEmptyError),
 			_ => Err(ExpressionError::TooManyValues),
