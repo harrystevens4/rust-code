@@ -17,7 +17,14 @@ fn main() {
 }
 
 fn help() {
-    println!("Usage: rpn-calc <expression>");
+    println!("Usage: rpn-calc [expression]");
+    println!("Interactive mode:");
+    println!("  - when 0 arguments are passed interactive mode is started");
+    println!("  - expressions are read from stdin");
+    println!("  - after each line the stack is printed");
+    println!("    - right most is the top and left most is the bottom");
+    println!("  - and any errors are also printed");
+    println!("  - `clear` can be used to clear the stack");
     println!("Expression grammar:");
     println!("   - terms seperated by spaces");
     println!("      - \"5 6 +\"");
@@ -25,11 +32,19 @@ fn help() {
 
 fn eval_from_stdin() {
     println!("Reading from stdin");
-    let stateful_evaluator = rpn::StatefulEvaluator::new();
+    let mut stateful_evaluator = rpn::StatefulEvaluator::new();
     for line in io::stdin().lines() {
         //unwrap the line
-        let line = match line {
+        let line = match line.as_ref().map(|s| s.as_ref()) {
+            //print any errors
             Err(e) => return eprintln!("Error reading stdin: {e}"),
+            //reset the state
+            Ok("clear") => {
+                stateful_evaluator = rpn::StatefulEvaluator::new();
+                println!("===> []");
+                continue;
+            },
+            //continue to processing the expression
             Ok(line) => line,
         };
         //attempt to parse it
@@ -41,8 +56,11 @@ fn eval_from_stdin() {
             }
         };
         //attempt to evaluate it
-        match expression.evaluate() {
-            Ok(result) => println!("===> {result}"),
+        match stateful_evaluator.feed(expression) {
+            Ok(()) => println!("===> {}", match &stateful_evaluator.stack()[..] {
+                [rpn::Term::Value(value)] => format!("{value}"),
+                other => format!("{other:?}"),
+            }),
             Err(e) => {
                 eprintln!("=e=> Error evaluating expression: {e}");
                 continue;
