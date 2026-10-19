@@ -255,7 +255,10 @@ impl Application<'_> {
 				//typing in the filter
 				Char('/') => self.toggle_filter(),
 				Char(c) => self.filter_add_char(c),
-				Backspace => self.filter_remove_char(),
+				Backspace => match self.filter.as_ref().map(String::is_empty) {
+                    Some(true) => self.toggle_filter(),
+                    _ => self.filter_remove_char(),
+                }
 				_ => (),
 			}},
 			_ => (),
