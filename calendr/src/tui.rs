@@ -11,6 +11,8 @@ use ratatui::{
 		KeyEventKind,
 		Event,
 		KeyModifiers,
+        MouseEventKind::{ScrollDown,ScrollUp},
+        EnableMouseCapture,
 	},
 	style::{Style,Color},
 	buffer::Buffer,
@@ -183,6 +185,7 @@ impl Application<'_> {
 		application
 	}
 	pub fn tui_loop(&mut self, terminal: &mut DefaultTerminal) -> Result<(),Box<dyn Error>>{
+        crossterm::execute!(io::stdout(),EnableMouseCapture)?;
 		while self.exit == false {
 			terminal.draw(|frame| self.draw(frame))?;
 			self.handle_events()?;
@@ -202,6 +205,18 @@ impl Application<'_> {
 		}
 		//read the event
 		match crossterm::event::read()?{
+            //====== mouse events ======
+			Event::Mouse(mouse_event) => {
+			match mouse_event.kind {
+				ScrollUp if self.selected_window == SelectedWindow::CalendarDisplay =>
+                    self.scroll_calendar_right(),
+				//scroll to previous day
+				ScrollDown if self.selected_window == SelectedWindow::CalendarDisplay =>
+                    self.scroll_calendar_left(),
+                _ => (),
+
+            }},
+            //====== keyboard events ======
 			Event::Key(key_event) if key_event.kind == KeyEventKind::Press => {
 			match key_event.code {
 				//quit
