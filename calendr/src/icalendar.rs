@@ -58,6 +58,7 @@ pub struct ICalendar {
 	name: String,
 	raw: String,
 }
+//impl Send for ICalendar {}
 
 pub trait ClampDateToDay {
 	fn clamp_date_to_day(self, day: NaiveDate) -> Self;
@@ -296,15 +297,23 @@ impl ICalendar {
 	pub fn as_ics(&self) -> String {
 		self.raw.clone()
 	}
-	pub fn load_from_url<T: AsRef<str>>(name: T, url: T) -> Result<ICalendar,Box<dyn Error>>{
-		let request_client = reqwest::blocking::Client::new();
-		let raw_calendar_text = request_client
-			.get(url.as_ref())
-			.send().map_err(|_| fmt_err!("unable to connect to {:?}",url.as_ref()))?
-			.text()?;
-		Ok(ICalendar::load_from_str(&name,raw_calendar_text)
-			.map_err(|e| fmt_err!("Error parsing calendar {:?}: {e}",name.as_ref()))?
-		)
+	// pub async fn load_from_url<T: AsRef<str>>(name: T, url: T) -> Result<ICalendar,Box<dyn Error>>{
+	pub fn load_from_url<T: AsRef<str> + Send + Sync>(name: T, url: T) -> impl Future<Output = Result<ICalendar,Box<dyn Error>>> + Send {
+        let name_string: String = name.as_ref().to_string();
+        let url_string: String = url.as_ref().to_string();
+        async move {
+            let request_client = reqwest::Client::new();
+            let raw_calendar_text = request_client
+                .get(&url_string)
+                .send()
+                .await
+                .map_err(|_| fmt_err!("unable to connect to {:?}",url.as_ref()))?
+                .text()
+                .await?;
+            Ok::<ICalendar,Box<dyn Error>>(ICalendar::load_from_str(&name_string,raw_calendar_text)
+                .map_err(|e| fmt_err!("Error parsing calendar {:?}: {e}",name.as_ref()))?
+            )
+        }
 	}
 }
 

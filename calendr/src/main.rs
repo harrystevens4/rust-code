@@ -2,9 +2,7 @@ mod icalendar;
 mod config;
 mod tui;
 use std::env;
-use std::mem::drop;
-use tokio::runtime::{Handle,Runtime};
-use std::thread;
+use tokio::runtime::{Runtime};
 use std::fs;
 use std::io;
 use std::{fmt::{Debug,Display,Formatter},fmt};
@@ -91,8 +89,10 @@ fn main() -> Result<(),PlainError> {
 		.map(|(name,contents)| ICalendar::load_from_str(name,contents))
 		.collect::<Result<CombinedCalendar,_>>()
 		.map_err(|e| fmt_err!("Error loading cached calendar: {e}"))?;
+    //i lowk give up
     let calendar_mutex = Box::leak(Box::new(Mutex::new(calendar)));
-    let runtime = Handle::current();
+    //reqwest only supports cancelation via async
+    let runtime = Runtime::new()?;
     runtime.block_on(async move {
         //====== fetch calendars ======
         let update_calendars_task = task::spawn(update_calendars(
@@ -105,14 +105,13 @@ fn main() -> Result<(),PlainError> {
         let _ = ratatui::run(move |terminal| application.tui_loop(terminal))
             .map_err(|e| fmt_err!("Error in tui loop: {e}"));
         //====== await fetch result ======
-        panic!("a");
         if update_calendars_task.is_finished() {
-            panic!("fetch completed");
+            println!("calendar fetch completed");
             update_calendars_task.await
-                .map_err(|e| io::Error::other("failed to join update calendar task"))
+                .map_err(|_| io::Error::other("failed to join update calendar task"))
                 .flatten()
         } else {
-            panic!("fetch aborted");
+            println!("calendar fetch aborted");
             update_calendars_task.abort();
             Ok(())
         }
@@ -122,7 +121,7 @@ fn main() -> Result<(),PlainError> {
 
 async fn update_calendars(application_config: ApplicationConfig, calendar_config: CalendarConfig, calendar_mutex: &Mutex<CombinedCalendar>) -> io::Result<()> {
 	//====== fetch the calendars ======
-	let calendar = calendar_config
+	let calendar_futures = calendar_config
         .calendars()
 		.into_iter()
 		.map(|e|{
@@ -138,9 +137,16 @@ async fn update_calendars(application_config: ApplicationConfig, calendar_config
         .map_err(|e| fmt_err!("Error reading calendars config file: {e}"))?
 		.into_iter()
 		//try loading from url
-		.map(|(n,u)| ICalendar::load_from_url(&n,&u))
-		.collect::<Result<CombinedCalendar,_>>()
-		.map_err(|e| fmt_err!("Error fetching calendar: {e}"))?;
+		.map(async |(n,u)| ICalendar::load_from_url(&n,&u).await);
+
+    let mut individual_calendars = vec![];
+    for future in calendar_futures {
+        let result = future.await;
+        individual_calendars.push(
+            result.map_err(|e| fmt_err!("Error fetching calendar: {e}"))?
+        );
+    }
+    let calendar: CombinedCalendar = individual_calendars.into_iter().collect();
 	//====== cache the calendars ======
 	if let Some(calendar_dir) = application_config.calendar_storage_dir(){
 		fs::create_dir_all(&calendar_dir)
