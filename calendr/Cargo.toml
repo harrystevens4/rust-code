@@ -9,3 +9,5 @@ ratatui = { version = "0.30.2", features = ["unstable-rendered-line-info"] }
 iniconfig = { path = "../iniconfig" }
 reqwest = { version = "0.13.5", features = ["blocking"] }
 uuid = { version = "1.26.1", features = ["v4"] }
+tokio = "1.54.1"
+tokio-scoped = "0.2.0"

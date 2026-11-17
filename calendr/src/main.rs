@@ -2,6 +2,8 @@ mod icalendar;
 mod config;
 mod tui;
 use std::env;
+use std::mem::drop;
+use tokio::runtime::{Handle,Runtime};
 use std::thread;
 use std::fs;
 use std::io;
@@ -11,6 +13,8 @@ use icalendar::{CombinedCalendar,ICalendar};
 use config::{ApplicationConfig,CalendarConfig};
 use ratatui::style::Style;
 use crate::tui::Application;
+use tokio::task;
+
 //use std::process::{ExitCode,ExitCode::FAILURE,ExitCode::SUCCESS};
 
 const STYLE_SELECTED_TEXT: Style = Style::new().white().on_red();
@@ -87,25 +91,36 @@ fn main() -> Result<(),PlainError> {
 		.map(|(name,contents)| ICalendar::load_from_str(name,contents))
 		.collect::<Result<CombinedCalendar,_>>()
 		.map_err(|e| fmt_err!("Error loading cached calendar: {e}"))?;
-	//====== start calendar fetch thread and application ======
-	let calendar_mutex = Mutex::new(calendar);
-	thread::scope(|s| -> io::Result<()> {
-		//====== fetch calendars ======
-		let update_thread = s.spawn(|| -> io::Result<()> {
-			update_calendars(&application_config,&calendar_config,&calendar_mutex)
-		});
-		//====== ratatui ======
-		let mut application = Application::new(&calendar_mutex,&application_config);
-		ratatui::run(move |terminal| application.tui_loop(terminal))
-			.map_err(|e| fmt_err!("Error in tui loop: {e}"))?;
-		//propogate any panics
-		update_thread.join().unwrap()?;
-		Ok(())
-	})?;
+    let calendar_mutex = Box::leak(Box::new(Mutex::new(calendar)));
+    let runtime = Handle::current();
+    runtime.block_on(async move {
+        //====== fetch calendars ======
+        let update_calendars_task = task::spawn(update_calendars(
+            application_config.clone(),
+            calendar_config.clone(),
+            calendar_mutex
+        ));
+        //====== ratatui ======
+        let mut application = Application::new(&calendar_mutex,&application_config);
+        let _ = ratatui::run(move |terminal| application.tui_loop(terminal))
+            .map_err(|e| fmt_err!("Error in tui loop: {e}"));
+        //====== await fetch result ======
+        panic!("a");
+        if update_calendars_task.is_finished() {
+            panic!("fetch completed");
+            update_calendars_task.await
+                .map_err(|e| io::Error::other("failed to join update calendar task"))
+                .flatten()
+        } else {
+            panic!("fetch aborted");
+            update_calendars_task.abort();
+            Ok(())
+        }
+    })?;
     Ok(())
 }
 
-fn update_calendars(application_config: &ApplicationConfig, calendar_config: &CalendarConfig, calendar_mutex: &Mutex<CombinedCalendar>) -> io::Result<()> {
+async fn update_calendars(application_config: ApplicationConfig, calendar_config: CalendarConfig, calendar_mutex: &Mutex<CombinedCalendar>) -> io::Result<()> {
 	//====== fetch the calendars ======
 	let calendar = calendar_config
         .calendars()
