@@ -3,6 +3,7 @@ mod config;
 mod tui;
 use std::env;
 use tokio::runtime::{Runtime};
+use std::sync::Arc;
 use std::fs;
 use std::io;
 use std::{fmt::{Debug,Display,Formatter},fmt};
@@ -89,8 +90,8 @@ fn main() -> Result<(),PlainError> {
 		.map(|(name,contents)| ICalendar::load_from_str(name,contents))
 		.collect::<Result<CombinedCalendar,_>>()
 		.map_err(|e| fmt_err!("Error loading cached calendar: {e}"))?;
-    //i lowk give up
-    let calendar_mutex = Box::leak(Box::new(Mutex::new(calendar)));
+    //sooooooooo many characters
+    let calendar_mutex_arc = Arc::from(Mutex::new(calendar)); //unsure if i need pin here
     //reqwest only supports cancelation via async
     let runtime = Runtime::new()?;
     runtime.block_on(async move {
@@ -98,10 +99,10 @@ fn main() -> Result<(),PlainError> {
         let update_calendars_task = task::spawn(update_calendars(
             application_config.clone(),
             calendar_config.clone(),
-            calendar_mutex
+            calendar_mutex_arc.clone()
         ));
         //====== ratatui ======
-        let mut application = Application::new(&calendar_mutex,&application_config);
+        let mut application = Application::new(&calendar_mutex_arc,&application_config);
         let _ = ratatui::run(move |terminal| application.tui_loop(terminal))
             .map_err(|e| fmt_err!("Error in tui loop: {e}"));
         //====== await fetch result ======
@@ -119,7 +120,7 @@ fn main() -> Result<(),PlainError> {
     Ok(())
 }
 
-async fn update_calendars(application_config: ApplicationConfig, calendar_config: CalendarConfig, calendar_mutex: &Mutex<CombinedCalendar>) -> io::Result<()> {
+async fn update_calendars(application_config: ApplicationConfig, calendar_config: CalendarConfig, calendar_mutex: Arc<Mutex<CombinedCalendar>>) -> io::Result<()> {
 	//====== fetch the calendars ======
 	let calendar_futures = calendar_config
         .calendars()
@@ -160,7 +161,7 @@ async fn update_calendars(application_config: ApplicationConfig, calendar_config
 			.collect::<Result<Vec<_>,_>>()?;
 	}
 	//====== acquire the mutex and store new calendar value ======
-	let mut calendar_mutex = calendar_mutex.lock().unwrap();
+	let mut calendar_mutex = calendar_mutex.as_ref().lock().unwrap();
 	*calendar_mutex = calendar;
 	Ok(())
 }
